@@ -15,14 +15,17 @@ const CATALOG = [
 
 const $ = selector => document.querySelector(selector);
 const views = ['loadingView','landingView','ritualView','resultView','errorView'];
-const state = {token:null,potion:null,type:0,demo:false,opened:false,pouring:false,sound:true,motion:false,base:null,holdTimer:null,drag:null};
+const state = {token:null,potion:null,type:0,demo:false,opened:false,pouring:false,sound:true,motion:false,motionSource:null,sensorSeen:false,sensorTimer:null,holdTimer:null,drag:null};
 let bottleSequence = 0;
 let audioContext;
 
 function showView(id) {
   views.forEach(view => document.getElementById(view).hidden = view !== id);
   $('#app').dataset.state = id.replace('View','');
-  window.scrollTo({top:0,behavior:'smooth'});
+  const lockScroll = id === 'ritualView' || id === 'resultView';
+  window.scrollTo({top:0,behavior:'auto'});
+  document.documentElement.classList.toggle('scroll-locked', lockScroll);
+  document.body.classList.toggle('scroll-locked', lockScroll);
 }
 
 function bottleSvg(potion, options = {}) {
@@ -99,9 +102,11 @@ function renderRitual() {
 }
 
 function resetInteraction() {
-  state.opened = false; state.pouring = false; state.motion = false; state.base = null; state.drag = null;
+  state.opened = false; state.pouring = false; state.motion = false; state.motionSource = null; state.sensorSeen = false; state.drag = null;
   clearTimeout(state.holdTimer); state.holdTimer = null;
+  clearTimeout(state.sensorTimer); state.sensorTimer = null;
   window.removeEventListener('deviceorientation', onOrientation);
+  window.removeEventListener('devicemotion', onMotion);
   $('#stage').className = 'potion-stage';
   $('#stage').style.removeProperty('--tilt');
   $('#tiltMeter').style.removeProperty('--tilt-progress');
@@ -136,11 +141,18 @@ function setStep(index) {
   [...$('#steps').children].forEach((item,i) => item.className = i < index ? 'done' : i === index ? 'active' : '');
 }
 
-function requestMotionPermission() {
-  const Orientation = window.DeviceOrientationEvent;
-  if (!Orientation) return Promise.resolve(false);
-  if (typeof Orientation.requestPermission === 'function') return Orientation.requestPermission().then(value => value === 'granted').catch(() => false);
-  return Promise.resolve(true);
+async function requestMotionPermission() {
+  const sensors = [window.DeviceOrientationEvent, window.DeviceMotionEvent].filter(Boolean);
+  if (!sensors.length) return false;
+  const requests = sensors
+    .filter((Sensor,index) => sensors.indexOf(Sensor) === index && typeof Sensor.requestPermission === 'function')
+    .map(Sensor => {
+      try { return Sensor.requestPermission().catch(() => 'denied'); }
+      catch { return Promise.resolve('denied'); }
+    });
+  if (!requests.length) return true;
+  const results = await Promise.all(requests);
+  return results.some(value => value === 'granted');
 }
 
 async function openBottle() {
@@ -154,33 +166,58 @@ async function openBottle() {
   state.motion = await permission;
   if (state.motion) {
     window.addEventListener('deviceorientation', onOrientation, {passive:true});
+    window.addEventListener('devicemotion', onMotion, {passive:true});
     $('#stage').classList.add('motion-ready');
-    $('#sensorMessage').textContent = 'Датчики движения включены. Наклоните телефон, словно пьёте из флакона.';
+    $('#sensorMessage').textContent = 'Проверяем датчики… Наклоните телефон из вертикального положения почти горизонтально.';
+    state.sensorTimer = setTimeout(() => {
+      if (!state.sensorSeen && !state.pouring) $('#sensorMessage').textContent = 'Сигнал датчика не получен. Потяните бутылку вверх или в сторону пальцем.';
+    }, 1800);
   } else {
     $('#sensorMessage').textContent = 'Датчик движения недоступен. Потяните бутылку вверх или в сторону пальцем.';
   }
 }
 
-function angularDistance(a,b) {
-  if (a == null || b == null) return 0;
-  return Math.abs(((a-b+180)%360+360)%360-180);
+function tiltProgress(flatness) {
+  return Math.max(0, Math.min(1, (flatness - .08) / .82));
 }
 
-function onOrientation(event) {
+function applyTiltProgress(progress) {
   if (!state.opened || state.pouring) return;
-  if (!state.base) { state.base={beta:event.beta,gamma:event.gamma}; return; }
-  const delta = Math.max(angularDistance(event.beta,state.base.beta),angularDistance(event.gamma,state.base.gamma));
-  const progress = Math.max(0,Math.min(1,(delta-8)/58));
+  if (!state.sensorSeen) {
+    state.sensorSeen = true;
+    clearTimeout(state.sensorTimer); state.sensorTimer = null;
+    $('#sensorMessage').textContent = 'Датчик активен. Наклоните телефон почти горизонтально, словно пьёте из флакона.';
+  }
   $('#stage').style.setProperty('--tilt',`${-progress*76}deg`);
   $('#tiltMeter').style.setProperty('--tilt-progress',progress);
   if (progress > .86 && !state.holdTimer) state.holdTimer = setTimeout(beginPour,700);
   if (progress <= .78 && state.holdTimer) { clearTimeout(state.holdTimer);state.holdTimer=null; }
 }
 
+function onOrientation(event) {
+  if (state.motionSource === 'motion' || event.beta == null || event.gamma == null) return;
+  state.motionSource ||= 'orientation';
+  const beta = event.beta * Math.PI / 180;
+  const gamma = event.gamma * Math.PI / 180;
+  const flatness = Math.abs(Math.cos(beta) * Math.cos(gamma));
+  applyTiltProgress(tiltProgress(flatness));
+}
+
+function onMotion(event) {
+  const gravity = event.accelerationIncludingGravity;
+  if (!gravity || gravity.x == null || gravity.y == null || gravity.z == null) return;
+  const magnitude = Math.hypot(gravity.x,gravity.y,gravity.z);
+  if (magnitude < 1) return;
+  state.motionSource = 'motion';
+  applyTiltProgress(tiltProgress(Math.abs(gravity.z) / magnitude));
+}
+
 async function beginPour() {
   if (state.pouring) return;
   state.pouring = true; clearTimeout(state.holdTimer); state.holdTimer=null;
+  clearTimeout(state.sensorTimer); state.sensorTimer=null;
   window.removeEventListener('deviceorientation', onOrientation);
+  window.removeEventListener('devicemotion', onMotion);
   $('#stage').classList.add('pouring'); $('#stage').classList.remove('dragging');
   $('#stageCaption').textContent = 'Зелье льётся…'; setStep(2); playPour(); navigator.vibrate?.([35,60,35]);
   try {
