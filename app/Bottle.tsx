@@ -27,6 +27,5 @@ export default function Bottle({level=0,empty=false}:{level?:number,empty?:boole
  <path d={level===0?'M71 60V150':level===1?'M80 87L101 162':level===2?'M97 63V157':'M97 98L84 161'} stroke="white" strokeWidth="2" strokeLinecap="round" opacity=".55"/>
  </g><path d={shape} stroke="#fffcef" strokeWidth="1.1"/>
  <rect x={jar?22:level===0?36:39} y={jar?36:30} width={jar?72:level===0?44:38} height="9" rx="4" fill="#fffbe5" fillOpacity=".45" stroke="#fffced"/>
- <g transform={`translate(58 126) rotate(-7) scale(${level===0?.66:1})`} opacity={empty?.6:1}><ellipse rx="23" ry="24" fill="#f4e4b9" stroke={level===3?'#b99441':'#be985c'} strokeWidth={level===3?2:1}/><text textAnchor="middle" y="5" fill="#a23332" fontSize="24">♥</text><text textAnchor="middle" y="16" fill="#795737" fontSize="8">{['I','II','III','IV'][level]}</text></g>
  </svg></div>
 }
