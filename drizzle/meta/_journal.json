@@ -8,6 +8,13 @@
       "when": 1794661912867,
       "tag": "0000_spotty_hammerhead",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794681865010,
+      "tag": "0001_stiff_thing",
+      "breakpoints": true
     }
   ]
 }

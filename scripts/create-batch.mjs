@@ -2,11 +2,12 @@ import {randomBytes,createHash} from 'node:crypto';
 import {mkdirSync,writeFileSync,existsSync} from 'node:fs';
 const out='outputs';mkdirSync(out,{recursive:true});
 if(existsSync(out+'/potions.json'))throw Error('Existing batch; refusing to overwrite');
+const base=(process.env.PUBLIC_SITE_URL||'https://cat1ang.github.io/dnd-potion-vault/').replace(/\/?$/,'/');
 const rows=[];const registry={};
 for(const [type,count] of [100,50,25,10].entries())for(let n=1;n<=count;n++){
  const token=randomBytes(24).toString('hex');const id=`${type+1}-${String(n).padStart(3,'0')}`;
  registry[createHash('sha256').update(token).digest('hex')]=type;
- rows.push({id,type,token,url:'https://potion-vault-dnd-141126.opensky137.chatgpt.site/#p='+token});
+ rows.push({id,type,token,url:base+'#p='+token});
 }
 writeFileSync('lib/registry.ts','export const registry = '+JSON.stringify(registry,null,2)+';\n');
 writeFileSync(out+'/potions.json',JSON.stringify(rows,null,2));
