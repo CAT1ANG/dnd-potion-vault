@@ -1,1 +1,4 @@
 [hidden] { display: none !important; }
+.catalog-card .mini-bottle { width: 145px; height: 225px; margin: 0 auto; }
+@media (max-width: 800px) { .catalog-card .mini-bottle { width: 122px; height: 190px; } }
+@media (max-width: 430px) { .catalog-card .mini-bottle { width: 108px; height: 170px; } }
