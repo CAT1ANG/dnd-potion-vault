@@ -76,7 +76,11 @@ export default function SensorDiagnostics(){
   const delta=useMemo(()=>{
     if(!vertical||!edge)return null;
     const axes=['beta','gamma','gx','gy','gz'] as const;
-    const values=axes.map(axis=>({axis,value:(edge.reading[axis]??0)-(vertical.reading[axis]??0)}));
+    const values=axes.map(axis=>{
+      const raw=(edge.reading[axis]??0)-(vertical.reading[axis]??0);
+      const value=axis==='beta'||axis==='gamma'?((raw+540)%360)-180:raw;
+      return {axis,value};
+    });
     return values.sort((a,b)=>Math.abs(b.value)-Math.abs(a.value));
   },[vertical,edge]);
 
@@ -128,7 +132,7 @@ export default function SensorDiagnostics(){
         <button className={edge?'captured':''} onClick={()=>capture('На ребре')}><small>ШАГ 2</small><strong>{edge?'Ребро записано':'Запомнить положение на ребре'}</strong><span>{edge?`β ${number(edge.reading.beta,1)}° · γ ${number(edge.reading.gamma,1)}°`:'Поверни телефон как при выпивании'}</span></button>
       </section>
 
-      {delta&&<section className="sensor-result-card"><p>ПРЕДВАРИТЕЛЬНЫЙ ВЫВОД</p><h2>Сильнее всего изменилась ось <b>{delta[0].axis.toUpperCase()}</b></h2><div>{delta.map(item=><span key={item.axis}>{item.axis}: <strong>{item.value>0?'+':''}{number(item.value)}</strong></span>)}</div><button className="primary-action" onClick={copyReport}>Скопировать отчёт</button></section>}
+      {delta&&<section className="sensor-result-card"><p>ПРЕДВАРИТЕЛЬНЫЙ ВЫВОД</p><h2>Положение на ребре <b>записано</b></h2><div>{delta.map(item=><span key={item.axis}>{item.axis}: <strong>{item.value>0?'+':''}{number(item.value)}</strong></span>)}</div><button className="primary-action" onClick={copyReport}>Скопировать отчёт</button></section>}
     </>}
     {message&&<div className="sensor-test-message" role="status">{message}</div>}
   </main>;

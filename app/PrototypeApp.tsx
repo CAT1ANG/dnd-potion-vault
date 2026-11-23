@@ -294,37 +294,51 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     if (!opened || !ritualItem || result) return;
     let lastOrientationAt=0;
     let lastUpdateAt=performance.now();
+    let baselineGamma:number|null=null;
+    let baselineGravityX:number|null=null;
+    let orientationSamples=0;
+    let motionSamples=0;
 
-    function progress(value:number) {
+    function progress(target:number) {
       const now=performance.now();
       const elapsed=Math.min(80,Math.max(8,now-lastUpdateAt));
       lastUpdateAt=now;
-
-      // Не реагируем на мелкие движения рук. Полный наклон достигается
-      // примерно у бокового положения телефона, а не когда он лежит плашмя.
-      const target=Math.max(0,Math.min(1,(value-.32)/.62));
-      const smoothing=1-Math.pow(.88,elapsed/16.67);
+      const smoothing=1-Math.pow(.94,elapsed/16.67);
       let next=sensorTilt.current+(target-sensorTilt.current)*smoothing;
       if (next < .025) next=0;
       sensorTilt.current=next;
       setTilt(current => Math.max(current,next));
 
-      if (next > .92 && !holdTimer.current) holdTimer.current=setTimeout(consume,1100);
-      if (next <= .82 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
+      if (next > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,900);
+      if (next <= .80 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
     }
     function orientation(event:DeviceOrientationEvent) {
       if (event.gamma == null) return;
       lastOrientationAt=performance.now();
-      progress(Math.abs(Math.sin(event.gamma*Math.PI/180)));
+      if (orientationSamples < 12 || baselineGamma == null) {
+        baselineGamma=baselineGamma==null?event.gamma:baselineGamma+(event.gamma-baselineGamma)/(orientationSamples+1);
+        orientationSamples+=1;
+        progress(0);
+        return;
+      }
+      // Калибруемся относительно положения телефона при открытии пробки.
+      // По реальному iPhone: вертикаль ≈ -5°, нужное ребро ≈ -88°.
+      const degrees=Math.abs(event.gamma-baselineGamma);
+      progress(Math.max(0,Math.min(1,(degrees-8)/(82-8))));
     }
     function motion(event:DeviceMotionEvent) {
-      // DeviceOrientation обычно стабильнее. Акселерометр используем только
-      // как запасной вариант, чтобы два потока не спорили друг с другом.
-      if (performance.now()-lastOrientationAt < 500) return;
       const gravity = event.accelerationIncludingGravity;
       if (!gravity || gravity.x == null || gravity.y == null || gravity.z == null) return;
-      const magnitude = Math.hypot(gravity.x,gravity.y,gravity.z);
-      if (magnitude > 1) progress(Math.abs(gravity.x)/magnitude);
+      if (motionSamples < 12 || baselineGravityX == null) {
+        baselineGravityX=baselineGravityX==null?gravity.x:baselineGravityX+(gravity.x-baselineGravityX)/(motionSamples+1);
+        motionSamples+=1;
+        return;
+      }
+      // DeviceOrientation обычно стабильнее. Акселерометр используем только
+      // как запасной вариант, если события ориентации перестали приходить.
+      if (performance.now()-lastOrientationAt < 500) return;
+      const gravityDelta=Math.abs(gravity.x-baselineGravityX);
+      progress(Math.max(0,Math.min(1,(gravityDelta-1)/(9.7-1))));
     }
     window.addEventListener('deviceorientation',orientation,{passive:true});
     window.addEventListener('devicemotion',motion,{passive:true});
