@@ -68,6 +68,8 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [toast,setToast] = useState('');
   const [sensorPrompt,setSensorPrompt] = useState(false);
   const [sensorBusy,setSensorBusy] = useState(false);
+  const [scannerOpen,setScannerOpen] = useState(false);
+  const [scannerStarting,setScannerStarting] = useState(false);
   const [ritualItem,setRitualItem] = useState<InventoryItem|null>(null);
   const [shareCode,setShareCode] = useState<ShareCode|null>(null);
   const [opened,setOpened] = useState(false);
@@ -78,6 +80,8 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const screenGesture = useRef<{x:number;y:number;upperHalf:boolean}|null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const sensorTilt = useRef(0);
+  const scannerVideo = useRef<HTMLVideoElement|null>(null);
+  const scannerHandled = useRef(false);
   const pouringRef = useRef(false);
 
   const total = useMemo(() => Object.values(cart).reduce((sum,value) => sum + value,0),[cart]);
@@ -214,6 +218,55 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     }
   }
 
+  const claimScannedCode = useCallback(async (rawValue:string) => {
+    if (scannerHandled.current) return;
+    scannerHandled.current=true;
+    try {
+      const scanned=new URL(rawValue,location.href);
+      const hash=new URLSearchParams(scanned.hash.slice(1));
+      const token=hash.get('p');
+      const sharedItem=hash.get('s');
+      if (!token && !sharedItem) throw new Error('В этом QR-коде нет зелья');
+      const claim=token ? {action:'claim',token,deviceId} : {action:'claim_share',itemId:sharedItem,deviceId};
+      const data=await api<{transferred:boolean}>(claim);
+      setScannerOpen(false);
+      notify(data.transferred?'Зелье перешло в ваш инвентарь от другого игрока.':'Зелье добавлено в инвентарь.');
+      await refreshInventory(deviceId);
+    } catch (error) {
+      setScannerOpen(false);
+      notify(error instanceof Error ? error.message : 'Не удалось прочитать QR-код');
+    }
+  },[deviceId,notify,refreshInventory]);
+
+  useEffect(() => {
+    if (!scannerOpen) return;
+    let active=true;
+    let controls:{stop:()=>void}|undefined;
+    scannerHandled.current=false;
+    setScannerStarting(true);
+    void import('@zxing/browser').then(async ({BrowserQRCodeReader}) => {
+      if (!active || !scannerVideo.current) return;
+      const reader=new BrowserQRCodeReader();
+      controls=await reader.decodeFromConstraints(
+        {audio:false,video:{facingMode:{ideal:'environment'}}},
+        scannerVideo.current,
+        result => { if (result) void claimScannedCode(result.getText()); },
+      );
+      if (active) setScannerStarting(false);
+      else controls.stop();
+    }).catch(error => {
+      if (!active) return;
+      setScannerStarting(false);
+      setScannerOpen(false);
+      notify(error instanceof DOMException && error.name==='NotAllowedError'?'Разрешите доступ к камере в настройках браузера.':'Не удалось открыть камеру.');
+    });
+    return () => {
+      active=false;
+      controls?.stop();
+      setScannerStarting(false);
+    };
+  },[scannerOpen,claimScannedCode,notify]);
+
   const closeRitual = useCallback(async () => {
     setRitualItem(null); setOpened(false); setPouring(false); setTilt(0); setResult(null);
     sensorTilt.current = 0;
@@ -254,7 +307,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       let next=sensorTilt.current+(target-sensorTilt.current)*smoothing;
       if (next < .025) next=0;
       sensorTilt.current=next;
-      setTilt(next);
+      setTilt(current => Math.max(current,next));
 
       if (next > .92 && !holdTimer.current) holdTimer.current=setTimeout(consume,1100);
       if (next <= .82 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
@@ -359,6 +412,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       </aside>
     </main> : <main className={`player-page ${opened?'opened':''} ${pouring?'pouring':''}`} onPointerDown={playerPointerDown} onPointerUp={playerPointerEnd} onPointerCancel={() => {screenGesture.current=null;}}>
       <div className="page-title player-title"><p>ЛИЧНАЯ СУМКА ПРИКЛЮЧЕНЦА</p><h1>Мои зелья</h1></div>
+      <button className="inventory-scan-button" type="button" aria-label="Отсканировать новый QR-код" title="Отсканировать новый QR-код" onPointerDown={event => event.stopPropagation()} onClick={event => {event.stopPropagation();setScannerOpen(true);}}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 10.3 3h3.4L15 4.5h3.2A2.8 2.8 0 0 1 21 7.3v10.4a2.8 2.8 0 0 1-2.8 2.8H5.8A2.8 2.8 0 0 1 3 17.7V7.3a2.8 2.8 0 0 1 2.8-2.8H9Zm3 3.2a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4Zm0 2a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4Z"/></svg>
+      </button>
       {!inventoryReady ? <div className="inventory-empty"><span>✦</span><h2>Проверяем печати…</h2></div> : !inventory.length ? <div className="inventory-empty"><span>☾</span><h2>Инвентарь пуст</h2><p>Отсканируйте бирку зелья обычной камерой телефона.</p></div> : <>
         <div className="inventory-stage">
           {inventory.map((item,index) => <article className={`inventory-card ${index===selectedIndex?'active':''}`} key={item.id} aria-hidden={index!==selectedIndex} style={{'--potion-color':item.potion.color,'--card-offset':index-selectedIndex,opacity:index===selectedIndex?1:.28} as React.CSSProperties}>
@@ -367,7 +423,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3V3Zm2 2v3h3V5H5Zm9-2h7v7h-7V3Zm2 2v3h3V5h-3ZM3 14h7v7H3v-7Zm2 2v3h3v-3H5Zm9-2h3v3h-3v-3Zm4 0h3v3h-3v-3Zm-4 4h3v3h-3v-3Zm4 0h1v1h2v2h-4v-3Z"/></svg>
             </button>
             <div className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`}>
-              <div className="inventory-bottle-tilt" style={{transform:`rotate(${index===selectedIndex?-tilt*76:0}deg)`}}><Bottle level={levelFor(catalog,item.potion)}/></div>
+              <div className="inventory-bottle-shell"><Bottle level={levelFor(catalog,item.potion)} fill={index===selectedIndex&&opened?1-tilt:1}/></div>
               {shareCode?.itemId===item.id && <div className="inventory-qr">
                 <img src={shareCode.qr} alt={`QR-код передачи: ${item.potion.fullName}`}/>
                 <strong>Передать зелье</strong><span>Пусть другой игрок отсканирует этот код</span>
@@ -393,6 +449,15 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <p className="sensor-copy">Это позволит наклонить телефон и выпить открытое зелье. Запрос появится только один раз на этом устройстве.</p>
         <button className="primary-action" disabled={sensorBusy} onClick={enableSensors}>{sensorBusy?'Запрашиваем доступ…':'Разрешить датчики'}</button>
         <button className="sensor-skip" disabled={sensorBusy} onClick={continueWithoutSensors}>Продолжить без датчиков</button>
+      </div>
+    </div>}
+
+    {scannerOpen && <div className="scanner-overlay" role="dialog" aria-modal="true" aria-label="Сканер QR-кода">
+      <div className="scanner-panel">
+        <video ref={scannerVideo} autoPlay muted playsInline/>
+        <div className="scanner-frame" aria-hidden="true"><i/><i/><i/><i/></div>
+        {scannerStarting && <div className="scanner-loading">Открываем камеру…</div>}
+        <button type="button" className="scanner-close" aria-label="Закрыть сканер" onClick={() => setScannerOpen(false)}>×</button>
       </div>
     </div>}
 
