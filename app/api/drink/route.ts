@@ -32,13 +32,13 @@ async function resolveType(hash: string) {
   if (masterType !== undefined) return {type: masterType, demo: true};
   const originalType = (registry as Record<string, number>)[hash];
   if (originalType !== undefined) return {type: originalType, demo: false};
-  const stored = await env.DB.prepare('SELECT potion_type FROM potion_codes WHERE hash = ? AND disabled = 0').bind(hash).first<{potion_type: string}>();
+  const stored = await env.DB!.prepare('SELECT potion_type FROM potion_codes WHERE hash = ? AND disabled = 0').bind(hash).first<{potion_type: string}>();
   const storedType = stored ? types.findIndex(potion => potion.id === stored.potion_type) : -1;
   return storedType >= 0 ? {type: storedType, demo: false} : null;
 }
 
 async function previousOutcome(hash: string) {
-  return env.DB.prepare('SELECT result, at, type, dice_json, outcome_json FROM consumed WHERE hash = ?').bind(hash).first<{result:number;at:string;type:number;dice_json:string;outcome_json:string}>();
+  return env.DB!.prepare('SELECT result, at, type, dice_json, outcome_json FROM consumed WHERE hash = ?').bind(hash).first<{result:number;at:string;type:number;dice_json:string;outcome_json:string}>();
 }
 
 export async function OPTIONS(request: Request) {
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     if (resolved.demo) return json(request, {status:'consumed',type:resolved.type,potion,outcome,demo:true});
 
     const consumedAt = new Date().toISOString();
-    const inserted = await env.DB.prepare('INSERT INTO consumed (hash,result,at,type,dice_json,outcome_json) VALUES (?,?,?,?,?,?) ON CONFLICT(hash) DO NOTHING RETURNING hash').bind(hash,outcome.amount,consumedAt,resolved.type,JSON.stringify(outcome.dice),JSON.stringify(outcome)).first();
+    const inserted = await env.DB!.prepare('INSERT INTO consumed (hash,result,at,type,dice_json,outcome_json) VALUES (?,?,?,?,?,?) ON CONFLICT(hash) DO NOTHING RETURNING hash').bind(hash,outcome.amount,consumedAt,resolved.type,JSON.stringify(outcome.dice),JSON.stringify(outcome)).first();
     if (!inserted) {
       const previous = await previousOutcome(hash);
       if (!previous) throw new Error('Consumed result was not readable');

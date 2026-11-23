@@ -15,6 +15,13 @@
       "when": 1794681865010,
       "tag": "0001_stiff_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795450407733,
+      "tag": "0002_fast_jean_grey",
+      "breakpoints": true
     }
   ]
 }

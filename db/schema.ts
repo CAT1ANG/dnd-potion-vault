@@ -19,3 +19,21 @@ export const potionCodes = sqliteTable('potion_codes', {
   createdAt: text('created_at').notNull(),
   disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false),
 });
+
+export const inventoryBatches = sqliteTable('inventory_batches', {
+  id: text('id').primaryKey(),
+  createdAt: text('created_at').notNull(),
+  itemCount: integer('item_count').notNull(),
+});
+
+export const inventoryItems = sqliteTable('inventory_items', {
+  id: text('id').primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  potionType: text('potion_type').notNull(),
+  batchId: text('batch_id').notNull(),
+  ownerDevice: text('owner_device'),
+  claimedAt: text('claimed_at'),
+  consumedAt: text('consumed_at'),
+  resultJson: text('result_json'),
+  createdAt: text('created_at').notNull(),
+});
