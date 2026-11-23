@@ -75,6 +75,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [opened,setOpened] = useState(false);
   const [pouring,setPouring] = useState(false);
   const [tilt,setTilt] = useState(0);
+  const [liquidDrain,setLiquidDrain] = useState(0);
   const [result,setResult] = useState<{potion:Potion;outcome:Outcome}|null>(null);
   const previousIds = useRef<Set<string>>(new Set());
   const screenGesture = useRef<{x:number;y:number;upperHalf:boolean}|null>(null);
@@ -268,7 +269,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   },[scannerOpen,claimScannedCode,notify]);
 
   const closeRitual = useCallback(async () => {
-    setRitualItem(null); setOpened(false); setPouring(false); setTilt(0); setResult(null);
+    setRitualItem(null); setOpened(false); setPouring(false); setTilt(0); setLiquidDrain(0); setResult(null);
     sensorTilt.current = 0;
     pouringRef.current = false;
     await refreshInventory(deviceId,true);
@@ -277,10 +278,11 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const consume = useCallback(async () => {
     if (!ritualItem || pouringRef.current) return;
     pouringRef.current = true; setPouring(true); setTilt(1);
+    window.setTimeout(() => setLiquidDrain(1),50);
     try {
       const [data] = await Promise.all([
         api<{potion:Potion;outcome:Outcome}>({action:'consume',itemId:ritualItem.id,deviceId}),
-        new Promise(resolve => window.setTimeout(resolve,1500)),
+        new Promise(resolve => window.setTimeout(resolve,3200)),
       ]);
       setResult(data);
       await refreshInventory(deviceId,true);
@@ -354,6 +356,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     if (opened) return;
     sensorTilt.current=0;
     setTilt(0);
+    setLiquidDrain(0);
     setRitualItem(item);
     setShareCode(null);
     const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
@@ -437,7 +440,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3V3Zm2 2v3h3V5H5Zm9-2h7v7h-7V3Zm2 2v3h3V5h-3ZM3 14h7v7H3v-7Zm2 2v3h3v-3H5Zm9-2h3v3h-3v-3Zm4 0h3v3h-3v-3Zm-4 4h3v3h-3v-3Zm4 0h1v1h2v2h-4v-3Z"/></svg>
             </button>
             <div className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`}>
-              <div className="inventory-bottle-shell"><Bottle level={levelFor(catalog,item.potion)} fill={index===selectedIndex&&opened?1-tilt:1}/></div>
+              <div className="inventory-bottle-shell"><Bottle level={levelFor(catalog,item.potion)} fill={index===selectedIndex&&opened?1-liquidDrain:1} draining={pouring&&index===selectedIndex}/></div>
               {shareCode?.itemId===item.id && <div className="inventory-qr">
                 <img src={shareCode.qr} alt={`QR-код передачи: ${item.potion.fullName}`}/>
                 <strong>Передать зелье</strong><span>Пусть другой игрок отсканирует этот код</span>

@@ -6,7 +6,7 @@ const shapes=[
  'M25 37 H91 Q105 44 105 60 V166 Q105 180 91 180 H25 Q11 180 11 166 V60 Q11 44 25 37 Z',
  'M58 36 L112 93 L94 178 H22 L4 93 Z'
 ];
-export default function Bottle({level=0,empty=false,fill=1}:{level?:number,empty?:boolean,fill?:number}){
+export default function Bottle({level=0,empty=false,fill=1,draining=false}:{level?:number,empty?:boolean,fill?:number,draining?:boolean}){
  const id=useId().replace(/:/g,'');const jar=level===2;const color=colors[level];const shape=shapes[level];
  const liquidOffset=(1-Math.max(0,Math.min(1,fill)))*112;
  return <div className={`bottle bottle-${level} ${empty?'empty':''}`} aria-hidden="true"><svg className="bottle-art" viewBox="0 0 116 190" fill="none"><defs>
@@ -21,7 +21,7 @@ export default function Bottle({level=0,empty=false,fill=1}:{level?:number,empty
  {level===3&&<rect x="43" y="30" width="30" height="29" rx="3" fill={`url(#${id}-glass)`} stroke="#fff9e9"/>}
  <path d={shape} fill={`url(#${id}-glass)`} stroke="#8e8b6d" strokeOpacity=".45" strokeWidth="2"/>
  <g clipPath={`url(#${id}-shape)`}>
- <g opacity={empty?.06:1} style={{transform:`translateY(${liquidOffset}px)`,transition:'transform .2s ease-out'}}><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-fluid)`}/><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-depth)`}/><path d="M0 81 Q25 76 58 81 T116 81" stroke="#ffc4b4" strokeWidth="2" opacity=".65"/>
+ <g opacity={empty?.06:1} style={{transform:`translateY(${liquidOffset}px)`,transition:`transform ${draining?'3s linear':'.25s ease-out'}`}}><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-fluid)`}/><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-depth)`}/><path d="M0 81 Q25 76 58 81 T116 81" stroke="#ffc4b4" strokeWidth="2" opacity=".65"/>
  <circle cx="67" cy="94" r="2.4" stroke="#ffe5d1" opacity=".5"/><circle cx="47" cy="153" r="1.4" stroke="#ffe5d1" opacity=".5"/><circle cx="80" cy="161" r="2" stroke="#ffe5d1" opacity=".4"/></g>
  <path d={shape} fill="none" stroke="#fffdf0" strokeWidth="7" opacity=".4"/>
  <path d={level===0?'M46 46V161':level===1?'M44 58L15 163':level===2?'M24 56V160':'M51 52L17 96L29 158'} stroke="white" strokeWidth="5" strokeLinecap="round" opacity=".48"/>
