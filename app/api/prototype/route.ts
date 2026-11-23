@@ -110,6 +110,28 @@ export async function POST(request: Request) {
       return json({item:{id:existing.id,claimedAt,potion:publicPotion(potion)},transferred:Boolean(existing.owner_device && existing.owner_device !== body.deviceId)});
     }
 
+    if (body.action === 'claim_share') {
+      if (typeof body.itemId !== 'string' || !/^[a-f0-9]{24}$/.test(body.itemId) || !validDevice(body.deviceId)) return json({error:'QR-код передачи повреждён'}, 400);
+      const existing = await db.prepare('SELECT id, potion_type, owner_device, consumed_at FROM inventory_items WHERE id = ?').bind(body.itemId).first<{id:string;potion_type:string;owner_device:string|null;consumed_at:string|null}>();
+      if (!existing) return json({error:'Зелье не найдено'}, 404);
+      if (existing.consumed_at) return json({error:'Это зелье уже выпито'}, 409);
+      const claimedAt = new Date().toISOString();
+      await db.prepare('UPDATE inventory_items SET owner_device = ?, claimed_at = ? WHERE id = ? AND consumed_at IS NULL').bind(body.deviceId,claimedAt,existing.id).run();
+      const potion = potionById(existing.potion_type);
+      if (!potion) return json({error:'Неизвестный вид зелья'}, 500);
+      return json({item:{id:existing.id,claimedAt,potion:publicPotion(potion)},transferred:Boolean(existing.owner_device && existing.owner_device !== body.deviceId)});
+    }
+
+    if (body.action === 'share') {
+      if (typeof body.itemId !== 'string' || !validDevice(body.deviceId)) return json({error:'Не удалось определить флакон'}, 400);
+      const item = await db.prepare('SELECT id FROM inventory_items WHERE id = ? AND owner_device = ? AND consumed_at IS NULL').bind(body.itemId,body.deviceId).first<{id:string}>();
+      if (!item) return json({error:'Флакон больше не принадлежит этому устройству'}, 409);
+      const origin = new URL(request.url).origin;
+      const url = `${origin}/#s=${item.id}`;
+      const qr = await QRCode.toDataURL(url,{errorCorrectionLevel:'M',margin:1,width:420,color:{dark:'#251a14',light:'#fffdf4'}});
+      return json({url,qr});
+    }
+
     if (body.action === 'consume') {
       if (typeof body.itemId !== 'string' || !validDevice(body.deviceId)) return json({error:'Не удалось определить флакон'}, 400);
       const item = await db.prepare('SELECT potion_type FROM inventory_items WHERE id = ? AND owner_device = ? AND consumed_at IS NULL').bind(body.itemId,body.deviceId).first<{potion_type:string}>();

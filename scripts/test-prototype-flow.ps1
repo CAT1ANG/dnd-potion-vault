@@ -17,7 +17,12 @@ $claimA = Invoke-PrototypePost @{ action = 'claim'; token = $token; deviceId = $
 $inventoryA = Invoke-RestMethod -Uri "$prototypeApi`?deviceId=$deviceA"
 if ($inventoryA.items.Count -ne 1) { throw 'The first device did not receive the potion.' }
 
-$claimB = Invoke-PrototypePost @{ action = 'claim'; token = $token; deviceId = $deviceB }
+$share = Invoke-PrototypePost @{ action = 'share'; itemId = $claimA.item.id; deviceId = $deviceA }
+$sharedItemId = ($share.url -split '#s=')[1]
+if ($sharedItemId -ne $claimA.item.id -or -not $share.qr.StartsWith('data:image/png;base64,')) {
+  throw 'The current owner did not receive a valid transfer QR.'
+}
+$claimB = Invoke-PrototypePost @{ action = 'claim_share'; itemId = $sharedItemId; deviceId = $deviceB }
 $inventoryAAfter = Invoke-RestMethod -Uri "$prototypeApi`?deviceId=$deviceA"
 $inventoryB = Invoke-RestMethod -Uri "$prototypeApi`?deviceId=$deviceB"
 if ($inventoryAAfter.items.Count -ne 0 -or $inventoryB.items.Count -ne 1 -or -not $claimB.transferred) {
@@ -38,4 +43,4 @@ if ($consumed.outcome.amount -lt 4 -or $consumed.outcome.amount -gt 10 -or $inve
   throw 'Consumption result or inventory cleanup is invalid.'
 }
 
-Write-Output "PASS: QR generated, ownership moved A -> B, old owner rejected, current owner healed for $($consumed.outcome.amount)."
+Write-Output "PASS: QR generated, in-inventory share moved ownership A -> B, old owner rejected, current owner healed for $($consumed.outcome.amount)."

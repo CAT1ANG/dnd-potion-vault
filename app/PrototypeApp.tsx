@@ -10,6 +10,7 @@ type Potion = {
 type InventoryItem = {id:string; claimedAt:string; potion:Potion};
 type PrintItem = {id:string; number:number; potion:Potion; url:string; qr:string};
 type Outcome = {amount:number; dice:number[]; bonus:number; formula:string};
+type ShareCode = {itemId:string; url:string; qr:string};
 
 const API = '/api/prototype';
 
@@ -65,6 +66,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [inventoryReady,setInventoryReady] = useState(false);
   const [toast,setToast] = useState('');
   const [ritualItem,setRitualItem] = useState<InventoryItem|null>(null);
+  const [shareCode,setShareCode] = useState<ShareCode|null>(null);
   const [opened,setOpened] = useState(false);
   const [pouring,setPouring] = useState(false);
   const [tilt,setTilt] = useState(0);
@@ -104,11 +106,14 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   useEffect(() => {
     const id = getDeviceId();
     setDeviceId(id);
-    const token = new URLSearchParams(location.hash.slice(1)).get('p');
-    const playerRequested = token || new URLSearchParams(location.search).has('player');
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const token = hash.get('p');
+    const sharedItem = hash.get('s');
+    const playerRequested = token || sharedItem || new URLSearchParams(location.search).has('player');
     if (playerRequested) setMode('player');
-    if (token) {
-      api<{transferred:boolean}>({action:'claim',token,deviceId:id})
+    if (token || sharedItem) {
+      const claim = token ? {action:'claim',token,deviceId:id} : {action:'claim_share',itemId:sharedItem,deviceId:id};
+      api<{transferred:boolean}>(claim)
         .then(data => {
           notify(data.transferred ? 'Зелье перешло в ваш инвентарь от другого игрока.' : 'Зелье добавлено в инвентарь.');
           history.replaceState(null,'',`${location.pathname}?player=1`);
@@ -148,6 +153,17 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Не удалось создать печатный набор');
     } finally { setBusy(false); }
+  }
+
+  async function toggleShare(item:InventoryItem) {
+    if (shareCode?.itemId === item.id) return setShareCode(null);
+    try {
+      const data = await api<{url:string;qr:string}>({action:'share',itemId:item.id,deviceId});
+      setShareCode({itemId:item.id,...data});
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Не удалось создать QR-код передачи');
+      await refreshInventory(deviceId,true);
+    }
   }
 
   const closeRitual = useCallback(async () => {
@@ -265,9 +281,18 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <div className="inventory-strip">
           {inventory.map((item,index) => <article className="inventory-card" key={item.id} style={{'--potion-color':item.potion.color} as React.CSSProperties}>
             <p>{item.potion.rarity} · ФЛАКОН {index+1} ИЗ {inventory.length}</p>
-            <Bottle level={levelFor(catalog,item.potion)}/>
+            <div className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`}>
+              <Bottle level={levelFor(catalog,item.potion)}/>
+              {shareCode?.itemId===item.id && <div className="inventory-qr">
+                <img src={shareCode.qr} alt={`QR-код передачи: ${item.potion.fullName}`}/>
+                <strong>Передать зелье</strong><span>Пусть другой игрок отсканирует этот код</span>
+              </div>}
+            </div>
             <h2>{item.potion.fullName}</h2><strong>{item.potion.formula}</strong><span>{item.potion.range} здоровья</span>
-            <button className="primary-action" onClick={() => {setRitualItem(item);setOpened(false);setTilt(0);}}>Выбрать этот флакон</button>
+            <div className="inventory-actions">
+              <button className="secondary-action" onClick={() => toggleShare(item)}>{shareCode?.itemId===item.id?'Скрыть QR':'Показать QR'}</button>
+              <button className="primary-action" onClick={() => {setShareCode(null);setRitualItem(item);setOpened(false);setTilt(0);}}>Выпить зелье</button>
+            </div>
           </article>)}
         </div>
         <p className="swipe-hint">Листайте карточки горизонтальным свайпом</p>
