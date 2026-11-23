@@ -77,6 +77,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const previousIds = useRef<Set<string>>(new Set());
   const screenGesture = useRef<{x:number;y:number;upperHalf:boolean}|null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const sensorTilt = useRef(0);
   const pouringRef = useRef(false);
 
   const total = useMemo(() => Object.values(cart).reduce((sum,value) => sum + value,0),[cart]);
@@ -215,6 +216,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
 
   const closeRitual = useCallback(async () => {
     setRitualItem(null); setOpened(false); setPouring(false); setTilt(0); setResult(null);
+    sensorTilt.current = 0;
     pouringRef.current = false;
     await refreshInventory(deviceId,true);
   },[deviceId,refreshInventory]);
@@ -237,21 +239,39 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
 
   useEffect(() => {
     if (!opened || !ritualItem || result) return;
+    let lastOrientationAt=0;
+    let lastUpdateAt=performance.now();
+
     function progress(value:number) {
-      const normalized = Math.max(0,Math.min(1,(value-.08)/.82));
-      setTilt(normalized);
-      if (normalized > .86 && !holdTimer.current) holdTimer.current = setTimeout(consume,700);
-      if (normalized <= .78 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
+      const now=performance.now();
+      const elapsed=Math.min(80,Math.max(8,now-lastUpdateAt));
+      lastUpdateAt=now;
+
+      // Не реагируем на мелкие движения рук. Полный наклон достигается
+      // примерно у бокового положения телефона, а не когда он лежит плашмя.
+      const target=Math.max(0,Math.min(1,(value-.32)/.62));
+      const smoothing=1-Math.pow(.88,elapsed/16.67);
+      let next=sensorTilt.current+(target-sensorTilt.current)*smoothing;
+      if (next < .025) next=0;
+      sensorTilt.current=next;
+      setTilt(next);
+
+      if (next > .92 && !holdTimer.current) holdTimer.current=setTimeout(consume,1100);
+      if (next <= .82 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
     }
     function orientation(event:DeviceOrientationEvent) {
-      if (event.beta == null || event.gamma == null) return;
-      progress(Math.abs(Math.cos(event.beta*Math.PI/180)*Math.cos(event.gamma*Math.PI/180)));
+      if (event.gamma == null) return;
+      lastOrientationAt=performance.now();
+      progress(Math.abs(Math.sin(event.gamma*Math.PI/180)));
     }
     function motion(event:DeviceMotionEvent) {
+      // DeviceOrientation обычно стабильнее. Акселерометр используем только
+      // как запасной вариант, чтобы два потока не спорили друг с другом.
+      if (performance.now()-lastOrientationAt < 500) return;
       const gravity = event.accelerationIncludingGravity;
       if (!gravity || gravity.x == null || gravity.y == null || gravity.z == null) return;
       const magnitude = Math.hypot(gravity.x,gravity.y,gravity.z);
-      if (magnitude > 1) progress(Math.abs(gravity.z)/magnitude);
+      if (magnitude > 1) progress(Math.abs(gravity.x)/magnitude);
     }
     window.addEventListener('deviceorientation',orientation,{passive:true});
     window.addEventListener('devicemotion',motion,{passive:true});
@@ -265,6 +285,8 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
 
   async function openBottle(item:InventoryItem) {
     if (opened) return;
+    sensorTilt.current=0;
+    setTilt(0);
     setRitualItem(item);
     setShareCode(null);
     const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
