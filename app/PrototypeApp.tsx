@@ -281,18 +281,17 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <div className="inventory-strip">
           {inventory.map((item,index) => <article className="inventory-card" key={item.id} style={{'--potion-color':item.potion.color} as React.CSSProperties}>
             <p>{item.potion.rarity} · ФЛАКОН {index+1} ИЗ {inventory.length}</p>
-            <div className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`}>
+            <button className={`inventory-qr-toggle ${shareCode?.itemId===item.id?'active':''}`} onClick={() => toggleShare(item)} aria-label={shareCode?.itemId===item.id?'Скрыть QR-код передачи':'Показать QR-код передачи'} title={shareCode?.itemId===item.id?'Скрыть QR-код':'Показать QR-код'}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3V3Zm2 2v3h3V5H5Zm9-2h7v7h-7V3Zm2 2v3h3V5h-3ZM3 14h7v7H3v-7Zm2 2v3h3v-3H5Zm9-2h3v3h-3v-3Zm4 0h3v3h-3v-3Zm-4 4h3v3h-3v-3Zm4 0h1v1h2v2h-4v-3Z"/></svg>
+            </button>
+            <button className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`} disabled={shareCode?.itemId===item.id} onClick={() => {setShareCode(null);setRitualItem(item);setOpened(false);setTilt(0);}} aria-label={`Выпить ${item.potion.fullName}`}>
               <Bottle level={levelFor(catalog,item.potion)}/>
               {shareCode?.itemId===item.id && <div className="inventory-qr">
                 <img src={shareCode.qr} alt={`QR-код передачи: ${item.potion.fullName}`}/>
                 <strong>Передать зелье</strong><span>Пусть другой игрок отсканирует этот код</span>
               </div>}
-            </div>
+            </button>
             <h2>{item.potion.fullName}</h2><strong>{item.potion.formula}</strong><span>{item.potion.range} здоровья</span>
-            <div className="inventory-actions">
-              <button className="secondary-action" onClick={() => toggleShare(item)}>{shareCode?.itemId===item.id?'Скрыть QR':'Показать QR'}</button>
-              <button className="primary-action" onClick={() => {setShareCode(null);setRitualItem(item);setOpened(false);setTilt(0);}}>Выпить зелье</button>
-            </div>
           </article>)}
         </div>
         <p className="swipe-hint">Листайте карточки горизонтальным свайпом</p>
