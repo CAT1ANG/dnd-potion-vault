@@ -66,6 +66,8 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [inventoryReady,setInventoryReady] = useState(false);
   const [selectedIndex,setSelectedIndex] = useState(0);
   const [toast,setToast] = useState('');
+  const [sensorPrompt,setSensorPrompt] = useState(false);
+  const [sensorBusy,setSensorBusy] = useState(false);
   const [ritualItem,setRitualItem] = useState<InventoryItem|null>(null);
   const [shareCode,setShareCode] = useState<ShareCode|null>(null);
   const [opened,setOpened] = useState(false);
@@ -111,6 +113,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   useEffect(() => {
     const id = getDeviceId();
     setDeviceId(id);
+    const sensorChoice=localStorage.getItem('dnd-potion-sensors');
+    const sensorCapable='DeviceOrientationEvent' in window || 'DeviceMotionEvent' in window;
+    if (!sensorChoice && sensorCapable && window.matchMedia('(pointer: coarse)').matches) setSensorPrompt(true);
     const hash = new URLSearchParams(location.hash.slice(1));
     const token = hash.get('p');
     const sharedItem = hash.get('s');
@@ -170,6 +175,31 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Не удалось создать печатный набор');
     } finally { setBusy(false); }
+  }
+
+  async function enableSensors() {
+    setSensorBusy(true);
+    try {
+      const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
+      const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
+      const requests = [orientation?.requestPermission?.(),motion?.requestPermission?.()].filter(Boolean) as Promise<string>[];
+      const results=requests.length ? await Promise.all(requests) : ['granted'];
+      const granted=results.every(value => value==='granted');
+      localStorage.setItem('dnd-potion-sensors',granted?'granted':'denied');
+      setSensorPrompt(false);
+      notify(granted?'Датчики движения включены.':'Доступ к датчикам отклонён. Остаётся повторный свайп вверх.');
+    } catch {
+      localStorage.setItem('dnd-potion-sensors','denied');
+      setSensorPrompt(false);
+      notify('Не удалось включить датчики. Остаётся повторный свайп вверх.');
+    } finally {
+      setSensorBusy(false);
+    }
+  }
+
+  function continueWithoutSensors() {
+    localStorage.setItem('dnd-potion-sensors','skipped');
+    setSensorPrompt(false);
   }
 
   async function toggleShare(item:InventoryItem) {
@@ -330,6 +360,18 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     {printOpen && <div className="print-overlay">
       <div className="print-toolbar"><div><strong>Печатный набор</strong><span>{printItems.length} уникальных бирок</span></div><button onClick={() => setPrintOpen(false)}>Закрыть</button><button className="primary-action" onClick={() => window.print()}>Печатать</button></div>
       <div className="print-sheet">{printItems.map(item => <PrintTag item={item} key={item.id}/>)}</div>
+    </div>}
+
+    {sensorPrompt && mode==='player' && <div className="sensor-permission-overlay" role="dialog" aria-modal="true" aria-labelledby="sensor-title">
+      <div className="sensor-permission-card">
+        <span aria-hidden="true">✦</span>
+        <p>ИНТЕРАКТИВНОЕ ЗЕЛЬЕ</p>
+        <h2 id="sensor-title">Разрешить датчики движения?</h2>
+        <div className="sensor-orbit" aria-hidden="true"><i>◒</i></div>
+        <p className="sensor-copy">Это позволит наклонить телефон и выпить открытое зелье. Запрос появится только один раз на этом устройстве.</p>
+        <button className="primary-action" disabled={sensorBusy} onClick={enableSensors}>{sensorBusy?'Запрашиваем доступ…':'Разрешить датчики'}</button>
+        <button className="sensor-skip" disabled={sensorBusy} onClick={continueWithoutSensors}>Продолжить без датчиков</button>
+      </div>
     </div>}
 
     {result && <div className="ritual-overlay"><div className="result-card" style={{'--potion-color':result.potion.color} as React.CSSProperties}>
