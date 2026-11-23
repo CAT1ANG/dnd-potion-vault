@@ -72,7 +72,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [tilt,setTilt] = useState(0);
   const [result,setResult] = useState<{potion:Potion;outcome:Outcome}|null>(null);
   const previousIds = useRef<Set<string>>(new Set());
-  const corkStart = useRef(0);
+  const corkStart = useRef<number|null>(null);
   const dragStart = useRef<{x:number;y:number}|null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const pouringRef = useRef(false);
@@ -228,6 +228,30 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     navigator.vibrate?.([25,20,35]);
   }
 
+  function corkPointerDown(event:React.PointerEvent<HTMLButtonElement>) {
+    if (opened) return;
+    corkStart.current=event.clientY;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function corkPointerMove(event:React.PointerEvent<HTMLButtonElement>) {
+    if (corkStart.current == null || opened) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (corkStart.current-event.clientY > 28) {
+      corkStart.current=null;
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      void openBottle();
+    }
+  }
+
+  function corkPointerEnd(event:React.PointerEvent<HTMLButtonElement>) {
+    corkStart.current=null;
+    event.stopPropagation();
+  }
+
   function ritualPointerDown(event:React.PointerEvent) {
     if (!opened || pouring) return;
     dragStart.current={x:event.clientX,y:event.clientY};
@@ -276,7 +300,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <small className="prototype-note">В прототипе вход мастера не защищён. Перед публикацией добавим аккаунт и историю наборов.</small>
       </aside>
     </main> : <main className="player-page">
-      <div className="page-title player-title"><p>ЛИЧНАЯ СУМКА ПРИКЛЮЧЕНЦА</p><h1>Мои зелья</h1><span>Новый QR переносит флакон на это устройство. Проведите по коллекции, чтобы выбрать нужный.</span></div>
+      <div className="page-title player-title"><p>ЛИЧНАЯ СУМКА ПРИКЛЮЧЕНЦА</p><h1>Мои зелья</h1></div>
       {!inventoryReady ? <div className="inventory-empty"><span>✦</span><h2>Проверяем печати…</h2></div> : !inventory.length ? <div className="inventory-empty"><span>☾</span><h2>Инвентарь пуст</h2><p>Отсканируйте бирку зелья обычной камерой телефона.</p></div> : <>
         <div className="inventory-strip">
           {inventory.map((item,index) => <article className="inventory-card" key={item.id} style={{'--potion-color':item.potion.color} as React.CSSProperties}>
@@ -307,10 +331,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       {!result ? <div className="ritual-card" onPointerDown={ritualPointerDown} onPointerMove={ritualPointerMove} onPointerUp={() => {dragStart.current=null;}}>
         <button className="ritual-close" onClick={closeRitual}>Закрыть</button>
         <p>{ritualItem.potion.rarity}</p><h1>{ritualItem.potion.fullName}</h1>
-        <div className="ritual-bottle" style={{transform:`rotate(${-tilt*76}deg)`}}><Bottle level={levelFor(catalog,ritualItem.potion)}/><button className="cork-gesture" aria-label="Смахнуть пробку вверх" onPointerDown={event => {corkStart.current=event.clientY;event.stopPropagation();}} onPointerUp={event => {event.stopPropagation();if(corkStart.current-event.clientY>35) openBottle();}}>СВАЙП</button></div>
+        <div className="ritual-bottle" style={{transform:`rotate(${-tilt*76}deg)`}}><Bottle level={levelFor(catalog,ritualItem.potion)}/><button className="cork-gesture" aria-label="Открыть пробку жестом вверх" onPointerDown={corkPointerDown} onPointerMove={corkPointerMove} onPointerUp={corkPointerEnd} onPointerCancel={corkPointerEnd}/></div>
         <div className="ritual-progress"><i style={{width:`${tilt*100}%`}}/></div>
-        <h2>{!opened?'Смахните пробку вверх':pouring?'Зелье льётся…':'Наклоните телефон почти горизонтально'}</h2>
-        <p className="ritual-help">После открытия можно также потянуть флакон пальцем — это резерв для устройств без датчика.</p>
+        {opened && <h2>{pouring?'Зелье льётся…':'Наклоните телефон почти горизонтально'}</h2>}
       </div> : <div className="result-card" style={{'--potion-color':result.potion.color} as React.CSSProperties}>
         <p>ЗЕЛЬЕ ВЫПИТО</p><h1>Магия свершилась</h1><div className="result-amount">+{result.outcome.amount}<span>♥</span></div><small>ОЧКОВ ЗДОРОВЬЯ</small>
         <div className="result-dice">{result.outcome.dice.map((die,index)=><i key={index}>{die}</i>)}<b>+ {result.outcome.bonus}</b></div>
