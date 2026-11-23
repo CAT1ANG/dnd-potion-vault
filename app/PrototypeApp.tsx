@@ -64,6 +64,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [deviceId,setDeviceId] = useState('');
   const [inventory,setInventory] = useState<InventoryItem[]>([]);
   const [inventoryReady,setInventoryReady] = useState(false);
+  const [selectedIndex,setSelectedIndex] = useState(0);
   const [toast,setToast] = useState('');
   const [ritualItem,setRitualItem] = useState<InventoryItem|null>(null);
   const [shareCode,setShareCode] = useState<ShareCode|null>(null);
@@ -72,12 +73,16 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [tilt,setTilt] = useState(0);
   const [result,setResult] = useState<{potion:Potion;outcome:Outcome}|null>(null);
   const previousIds = useRef<Set<string>>(new Set());
-  const corkStart = useRef<number|null>(null);
-  const dragStart = useRef<{x:number;y:number}|null>(null);
+  const screenGesture = useRef<{x:number;y:number}|null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const pouringRef = useRef(false);
 
   const total = useMemo(() => Object.values(cart).reduce((sum,value) => sum + value,0),[cart]);
+  const activeItem = inventory.length ? inventory[Math.min(selectedIndex,inventory.length-1)] : null;
+
+  useEffect(() => {
+    if (selectedIndex >= inventory.length) setSelectedIndex(Math.max(0,inventory.length-1));
+  },[inventory.length,selectedIndex]);
 
   const notify = useCallback((message:string) => {
     setToast(message);
@@ -131,6 +136,18 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     const timer = window.setInterval(() => refreshInventory(deviceId,true),2500);
     return () => window.clearInterval(timer);
   },[mode,deviceId,refreshInventory]);
+
+  useEffect(() => {
+    if (mode !== 'player') return;
+    const htmlOverflow=document.documentElement.style.overflow;
+    const bodyOverflow=document.body.style.overflow;
+    document.documentElement.style.overflow='hidden';
+    document.body.style.overflow='hidden';
+    return () => {
+      document.documentElement.style.overflow=htmlOverflow;
+      document.body.style.overflow=bodyOverflow;
+    };
+  },[mode]);
 
   function changeQuantity(id:string, delta:number) {
     setCart(current => {
@@ -216,8 +233,10 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     };
   },[opened,ritualItem,result,consume]);
 
-  async function openBottle() {
+  async function openBottle(item:InventoryItem) {
     if (opened) return;
+    setRitualItem(item);
+    setShareCode(null);
     const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
     const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
     try {
@@ -228,42 +247,28 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     navigator.vibrate?.([25,20,35]);
   }
 
-  function corkPointerDown(event:React.PointerEvent<HTMLButtonElement>) {
-    if (opened) return;
-    corkStart.current=event.clientY;
+  function playerPointerDown(event:React.PointerEvent<HTMLElement>) {
+    if (pouring || result || shareCode) return;
+    screenGesture.current={x:event.clientX,y:event.clientY};
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-    event.stopPropagation();
   }
 
-  function corkPointerMove(event:React.PointerEvent<HTMLButtonElement>) {
-    if (corkStart.current == null || opened) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (corkStart.current-event.clientY > 28) {
-      corkStart.current=null;
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-      void openBottle();
+  function playerPointerEnd(event:React.PointerEvent<HTMLElement>) {
+    const start=screenGesture.current;
+    screenGesture.current=null;
+    if (!start || !activeItem || pouring || result || shareCode) return;
+    const dx=event.clientX-start.x;
+    const dy=event.clientY-start.y;
+    const horizontal=Math.abs(dx)>Math.abs(dy);
+    if (!opened && horizontal && Math.abs(dx)>42 && inventory.length>1) {
+      setSelectedIndex(current => dx<0 ? (current+1)%inventory.length : (current-1+inventory.length)%inventory.length);
+      navigator.vibrate?.(12);
+      return;
     }
-  }
-
-  function corkPointerEnd(event:React.PointerEvent<HTMLButtonElement>) {
-    corkStart.current=null;
-    event.stopPropagation();
-  }
-
-  function ritualPointerDown(event:React.PointerEvent) {
-    if (!opened || pouring) return;
-    dragStart.current={x:event.clientX,y:event.clientY};
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function ritualPointerMove(event:React.PointerEvent) {
-    if (!dragStart.current || !opened || pouring) return;
-    const distance = Math.hypot(event.clientX-dragStart.current.x,event.clientY-dragStart.current.y);
-    const progress = Math.min(1,distance/150);
-    setTilt(progress);
-    if (progress > .92) consume();
+    if (!horizontal && dy < -42) {
+      if (!opened) void openBottle(activeItem);
+      else void consume();
+    }
   }
 
   return <div className="site-shell">
@@ -299,26 +304,25 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <button className="primary-action" disabled={!total || busy} onClick={createPrintBatch}>{busy?'Создаём печати…':'Создать и печатать'}</button>
         <small className="prototype-note">В прототипе вход мастера не защищён. Перед публикацией добавим аккаунт и историю наборов.</small>
       </aside>
-    </main> : <main className="player-page">
+    </main> : <main className={`player-page ${opened?'opened':''} ${pouring?'pouring':''}`} onPointerDown={playerPointerDown} onPointerUp={playerPointerEnd} onPointerCancel={() => {screenGesture.current=null;}}>
       <div className="page-title player-title"><p>ЛИЧНАЯ СУМКА ПРИКЛЮЧЕНЦА</p><h1>Мои зелья</h1></div>
       {!inventoryReady ? <div className="inventory-empty"><span>✦</span><h2>Проверяем печати…</h2></div> : !inventory.length ? <div className="inventory-empty"><span>☾</span><h2>Инвентарь пуст</h2><p>Отсканируйте бирку зелья обычной камерой телефона.</p></div> : <>
-        <div className="inventory-strip">
-          {inventory.map((item,index) => <article className="inventory-card" key={item.id} style={{'--potion-color':item.potion.color} as React.CSSProperties}>
-            <p>{item.potion.rarity} · ФЛАКОН {index+1} ИЗ {inventory.length}</p>
-            <button className={`inventory-qr-toggle ${shareCode?.itemId===item.id?'active':''}`} onClick={() => toggleShare(item)} aria-label={shareCode?.itemId===item.id?'Скрыть QR-код передачи':'Показать QR-код передачи'} title={shareCode?.itemId===item.id?'Скрыть QR-код':'Показать QR-код'}>
+        <div className="inventory-stage">
+          {activeItem && <article className="inventory-card" key={activeItem.id} style={{'--potion-color':activeItem.potion.color} as React.CSSProperties}>
+            <p>{activeItem.potion.rarity} · ФЛАКОН {selectedIndex+1} ИЗ {inventory.length}</p>
+            <button className={`inventory-qr-toggle ${shareCode?.itemId===activeItem.id?'active':''}`} disabled={opened} onClick={() => toggleShare(activeItem)} aria-label={shareCode?.itemId===activeItem.id?'Скрыть QR-код передачи':'Показать QR-код передачи'} title={shareCode?.itemId===activeItem.id?'Скрыть QR-код':'Показать QR-код'}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3V3Zm2 2v3h3V5H5Zm9-2h7v7h-7V3Zm2 2v3h3V5h-3ZM3 14h7v7H3v-7Zm2 2v3h3v-3H5Zm9-2h3v3h-3v-3Zm4 0h3v3h-3v-3Zm-4 4h3v3h-3v-3Zm4 0h1v1h2v2h-4v-3Z"/></svg>
             </button>
-            <button className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`} disabled={shareCode?.itemId===item.id} onClick={() => {setShareCode(null);setRitualItem(item);setOpened(false);setTilt(0);}} aria-label={`Выпить ${item.potion.fullName}`}>
-              <Bottle level={levelFor(catalog,item.potion)}/>
-              {shareCode?.itemId===item.id && <div className="inventory-qr">
-                <img src={shareCode.qr} alt={`QR-код передачи: ${item.potion.fullName}`}/>
+            <div className={`inventory-visual ${shareCode?.itemId===activeItem.id?'showing-qr':''}`}>
+              <div className="inventory-bottle-tilt" style={{transform:`rotate(${-tilt*76}deg)`}}><Bottle level={levelFor(catalog,activeItem.potion)}/></div>
+              {shareCode?.itemId===activeItem.id && <div className="inventory-qr">
+                <img src={shareCode.qr} alt={`QR-код передачи: ${activeItem.potion.fullName}`}/>
                 <strong>Передать зелье</strong><span>Пусть другой игрок отсканирует этот код</span>
               </div>}
-            </button>
-            <h2>{item.potion.fullName}</h2><strong>{item.potion.formula}</strong><span>{item.potion.range} здоровья</span>
-          </article>)}
+            </div>
+            <div className="inventory-copy"><h2>{activeItem.potion.fullName}</h2><strong>{activeItem.potion.formula}</strong><span>{activeItem.potion.range} здоровья</span>{opened && <div className="inventory-ritual-progress"><i style={{width:`${tilt*100}%`}}/></div>}</div>
+          </article>}
         </div>
-        <p className="swipe-hint">Листайте карточки горизонтальным свайпом</p>
       </>}
     </main>}
 
@@ -327,19 +331,11 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       <div className="print-sheet">{printItems.map(item => <PrintTag item={item} key={item.id}/>)}</div>
     </div>}
 
-    {ritualItem && <div className={`ritual-overlay ${opened?'opened':''} ${pouring?'pouring':''}`}>
-      {!result ? <div className="ritual-card" onPointerDown={ritualPointerDown} onPointerMove={ritualPointerMove} onPointerUp={() => {dragStart.current=null;}}>
-        <button className="ritual-close" onClick={closeRitual}>Закрыть</button>
-        <p>{ritualItem.potion.rarity}</p><h1>{ritualItem.potion.fullName}</h1>
-        <div className="ritual-bottle" style={{transform:`rotate(${-tilt*76}deg)`}}><Bottle level={levelFor(catalog,ritualItem.potion)}/><button className="cork-gesture" aria-label="Открыть пробку жестом вверх" onPointerDown={corkPointerDown} onPointerMove={corkPointerMove} onPointerUp={corkPointerEnd} onPointerCancel={corkPointerEnd}/></div>
-        <div className="ritual-progress"><i style={{width:`${tilt*100}%`}}/></div>
-        {opened && <h2>{pouring?'Зелье льётся…':'Наклоните телефон почти горизонтально'}</h2>}
-      </div> : <div className="result-card" style={{'--potion-color':result.potion.color} as React.CSSProperties}>
+    {result && <div className="ritual-overlay"><div className="result-card" style={{'--potion-color':result.potion.color} as React.CSSProperties}>
         <p>ЗЕЛЬЕ ВЫПИТО</p><h1>Магия свершилась</h1><div className="result-amount">+{result.outcome.amount}<span>♥</span></div><small>ОЧКОВ ЗДОРОВЬЯ</small>
         <div className="result-dice">{result.outcome.dice.map((die,index)=><i key={index}>{die}</i>)}<b>+ {result.outcome.bonus}</b></div>
         <button className="primary-action" onClick={closeRitual}>Вернуться в инвентарь</button>
-      </div>}
-    </div>}
+      </div></div>}
 
     {toast && <div className="toast" role="status">{toast}</div>}
   </div>;
