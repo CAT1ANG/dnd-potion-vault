@@ -73,7 +73,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [tilt,setTilt] = useState(0);
   const [result,setResult] = useState<{potion:Potion;outcome:Outcome}|null>(null);
   const previousIds = useRef<Set<string>>(new Set());
-  const screenGesture = useRef<{x:number;y:number}|null>(null);
+  const screenGesture = useRef<{x:number;y:number;upperHalf:boolean}|null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const pouringRef = useRef(false);
 
@@ -249,7 +249,8 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
 
   function playerPointerDown(event:React.PointerEvent<HTMLElement>) {
     if (pouring || result || shareCode) return;
-    screenGesture.current={x:event.clientX,y:event.clientY};
+    const bounds=event.currentTarget.getBoundingClientRect();
+    screenGesture.current={x:event.clientX,y:event.clientY,upperHalf:event.clientY<bounds.top+bounds.height/2};
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }
 
@@ -261,11 +262,11 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     const dy=event.clientY-start.y;
     const horizontal=Math.abs(dx)>Math.abs(dy);
     if (!opened && horizontal && Math.abs(dx)>42 && inventory.length>1) {
-      setSelectedIndex(current => dx<0 ? (current+1)%inventory.length : (current-1+inventory.length)%inventory.length);
+      setSelectedIndex(current => dx<0 ? Math.min(current+1,inventory.length-1) : Math.max(current-1,0));
       navigator.vibrate?.(12);
       return;
     }
-    if (!horizontal && dy < -42) {
+    if (start.upperHalf && !horizontal && dy < -42) {
       if (!opened) void openBottle(activeItem);
       else void consume();
     }
@@ -308,20 +309,20 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       <div className="page-title player-title"><p>ЛИЧНАЯ СУМКА ПРИКЛЮЧЕНЦА</p><h1>Мои зелья</h1></div>
       {!inventoryReady ? <div className="inventory-empty"><span>✦</span><h2>Проверяем печати…</h2></div> : !inventory.length ? <div className="inventory-empty"><span>☾</span><h2>Инвентарь пуст</h2><p>Отсканируйте бирку зелья обычной камерой телефона.</p></div> : <>
         <div className="inventory-stage">
-          {activeItem && <article className="inventory-card" key={activeItem.id} style={{'--potion-color':activeItem.potion.color} as React.CSSProperties}>
-            <p>{activeItem.potion.rarity} · ФЛАКОН {selectedIndex+1} ИЗ {inventory.length}</p>
-            <button className={`inventory-qr-toggle ${shareCode?.itemId===activeItem.id?'active':''}`} disabled={opened} onClick={() => toggleShare(activeItem)} aria-label={shareCode?.itemId===activeItem.id?'Скрыть QR-код передачи':'Показать QR-код передачи'} title={shareCode?.itemId===activeItem.id?'Скрыть QR-код':'Показать QR-код'}>
+          {inventory.map((item,index) => <article className={`inventory-card ${index===selectedIndex?'active':''}`} key={item.id} aria-hidden={index!==selectedIndex} style={{'--potion-color':item.potion.color,'--card-offset':index-selectedIndex,opacity:index===selectedIndex?1:.28} as React.CSSProperties}>
+            <p>{item.potion.rarity} · ФЛАКОН {index+1} ИЗ {inventory.length}</p>
+            <button className={`inventory-qr-toggle ${shareCode?.itemId===item.id?'active':''}`} disabled={opened || index!==selectedIndex} onClick={() => toggleShare(item)} aria-label={shareCode?.itemId===item.id?'Скрыть QR-код передачи':'Показать QR-код передачи'} title={shareCode?.itemId===item.id?'Скрыть QR-код':'Показать QR-код'}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3V3Zm2 2v3h3V5H5Zm9-2h7v7h-7V3Zm2 2v3h3V5h-3ZM3 14h7v7H3v-7Zm2 2v3h3v-3H5Zm9-2h3v3h-3v-3Zm4 0h3v3h-3v-3Zm-4 4h3v3h-3v-3Zm4 0h1v1h2v2h-4v-3Z"/></svg>
             </button>
-            <div className={`inventory-visual ${shareCode?.itemId===activeItem.id?'showing-qr':''}`}>
-              <div className="inventory-bottle-tilt" style={{transform:`rotate(${-tilt*76}deg)`}}><Bottle level={levelFor(catalog,activeItem.potion)}/></div>
-              {shareCode?.itemId===activeItem.id && <div className="inventory-qr">
-                <img src={shareCode.qr} alt={`QR-код передачи: ${activeItem.potion.fullName}`}/>
+            <div className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`}>
+              <div className="inventory-bottle-tilt" style={{transform:`rotate(${index===selectedIndex?-tilt*76:0}deg)`}}><Bottle level={levelFor(catalog,item.potion)}/></div>
+              {shareCode?.itemId===item.id && <div className="inventory-qr">
+                <img src={shareCode.qr} alt={`QR-код передачи: ${item.potion.fullName}`}/>
                 <strong>Передать зелье</strong><span>Пусть другой игрок отсканирует этот код</span>
               </div>}
             </div>
-            <div className="inventory-copy"><h2>{activeItem.potion.fullName}</h2><strong>{activeItem.potion.formula}</strong><span>{activeItem.potion.range} здоровья</span>{opened && <div className="inventory-ritual-progress"><i style={{width:`${tilt*100}%`}}/></div>}</div>
-          </article>}
+            <div className="inventory-copy"><h2>{item.potion.fullName}</h2><strong>{item.potion.formula}</strong><span>{item.potion.range} здоровья</span>{opened && index===selectedIndex && <div className="inventory-ritual-progress"><i style={{width:`${tilt*100}%`}}/></div>}</div>
+          </article>)}
         </div>
       </>}
     </main>}
