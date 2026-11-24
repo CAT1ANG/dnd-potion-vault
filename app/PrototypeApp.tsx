@@ -108,6 +108,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const scannerHandled = useRef(false);
   const pouringRef = useRef(false);
   const sensorPermissionReady = useRef(false);
+  const dragTargetX = useRef(0);
+  const dragVisualX = useRef(0);
+  const dragFrame = useRef<number|null>(null);
 
   const total = useMemo(() => Object.values(cart).reduce((sum,value) => sum + value,0),[cart]);
   const activeItem = inventory.length ? inventory[Math.min(selectedIndex,inventory.length-1)] : null;
@@ -122,7 +125,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   },[]);
 
   const refreshInventory = useCallback(async (id = deviceId, quiet = false) => {
-    if (!id) return;
+    // Пока зелье выпивается и показывается результат, сохраняем именно его
+    // локальную карточку. Серверный инвентарь обновится после закрытия результата.
+    if (!id || pouringRef.current) return;
     try {
       const response = await fetch(`${API}?deviceId=${encodeURIComponent(id)}`,{cache:'no-store'});
       const data = await response.json() as {items?:InventoryItem[];error?:string};
@@ -327,12 +332,11 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         new Promise(resolve => window.setTimeout(resolve,2000)),
       ]);
       setResult(data);
-      await refreshInventory(deviceId,true);
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Магия прервалась');
       await closeRitual();
     }
-  },[ritualItem,deviceId,refreshInventory,notify,closeRitual]);
+  },[ritualItem,deviceId,notify,closeRitual]);
 
   useEffect(() => {
     if (!opened || !ritualItem || result) return;
@@ -432,11 +436,33 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     navigator.vibrate?.(18);
   }
 
+  function stopDragAnimation() {
+    if (dragFrame.current != null) cancelAnimationFrame(dragFrame.current);
+    dragFrame.current=null;
+    dragTargetX.current=0;
+    dragVisualX.current=0;
+    setDragX(0);
+  }
+
+  function smoothDragTo(target:number) {
+    dragTargetX.current=target;
+    if (dragFrame.current != null) return;
+    const step=() => {
+      const distance=dragTargetX.current-dragVisualX.current;
+      const next=Math.abs(distance)<.3 ? dragTargetX.current : dragVisualX.current+distance*.34;
+      dragVisualX.current=next;
+      setDragX(next);
+      if (Math.abs(dragTargetX.current-dragVisualX.current)>.3) dragFrame.current=requestAnimationFrame(step);
+      else dragFrame.current=null;
+    };
+    dragFrame.current=requestAnimationFrame(step);
+  }
+
   function playerPointerDown(event:React.PointerEvent<HTMLElement>) {
     if (pouring || result || shareCode) return;
     const bounds=event.currentTarget.getBoundingClientRect();
     screenGesture.current={x:event.clientX,y:event.clientY,upperHalf:event.clientY<bounds.top+bounds.height/2};
-    setDragX(0);
+    stopDragAnimation();
     setDragging(false);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }
@@ -450,14 +476,14 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     const beyondStart=selectedIndex===0 && dx>0;
     const beyondEnd=selectedIndex===inventory.length-1 && dx<0;
     setDragging(true);
-    setDragX((beyondStart||beyondEnd)?dx*.24:dx);
+    smoothDragTo((beyondStart||beyondEnd)?dx*.24:dx);
   }
 
   function playerPointerEnd(event:React.PointerEvent<HTMLElement>) {
     const start=screenGesture.current;
     screenGesture.current=null;
     setDragging(false);
-    setDragX(0);
+    stopDragAnimation();
     if (!start || !activeItem || pouring || result || shareCode) return;
     const dx=event.clientX-start.x;
     const dy=event.clientY-start.y;
@@ -511,7 +537,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <button className="primary-action" disabled={!total || busy} onClick={createPrintBatch}>{busy?'Создаём печати…':'Создать и печатать'}</button>
         <small className="prototype-note">В прототипе вход мастера не защищён. Перед публикацией добавим аккаунт и историю наборов.</small>
       </aside>
-    </main> : <main className={`player-page ${opened?'opened':''} ${pouring?'pouring':''} ${dragging?'inventory-dragging':''}`} onPointerDown={playerPointerDown} onPointerMove={playerPointerMove} onPointerUp={playerPointerEnd} onPointerCancel={() => {screenGesture.current=null;setDragging(false);setDragX(0);}}>
+    </main> : <main className={`player-page ${opened?'opened':''} ${pouring?'pouring':''} ${dragging?'inventory-dragging':''}`} onPointerDown={playerPointerDown} onPointerMove={playerPointerMove} onPointerUp={playerPointerEnd} onPointerCancel={() => {screenGesture.current=null;setDragging(false);stopDragAnimation();}}>
       <div className="page-title player-title"><p>ЛИЧНАЯ СУМКА ПРИКЛЮЧЕНЦА</p><h1>Мои зелья</h1></div>
       <button className="inventory-scan-button" type="button" aria-label="Отсканировать новый QR-код" title="Отсканировать новый QR-код" onPointerDown={event => event.stopPropagation()} onClick={event => {event.stopPropagation();setScannerOpen(true);}}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 10.3 3h3.4L15 4.5h3.2A2.8 2.8 0 0 1 21 7.3v10.4a2.8 2.8 0 0 1-2.8 2.8H5.8A2.8 2.8 0 0 1 3 17.7V7.3a2.8 2.8 0 0 1 2.8-2.8H9Zm3 3.2a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4Zm0 2a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4Z"/></svg>
