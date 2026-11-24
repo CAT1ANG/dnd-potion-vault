@@ -308,7 +308,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     try {
       const [data] = await Promise.all([
         api<{potion:Potion;outcome:Outcome}>({action:'consume',itemId:ritualItem.id,deviceId}),
-        new Promise(resolve => window.setTimeout(resolve,2200)),
+        new Promise(resolve => window.setTimeout(resolve,2000)),
       ]);
       setResult(data);
       await refreshInventory(deviceId,true);
