@@ -7,11 +7,12 @@ import Bottle from './Bottle';
 type Potion = {
   id:string; category:string; name:string; fullName:string; rarity:string;
   color:string; shape:string; interaction:string; range:string; formula:string;
+  effect:'healing'|'resistance'|'duration'; effectLabel:string; benefit:string;
 };
 type InventoryItem = {id:string; claimedAt:string; potion:Potion};
 type PrintItem = {id:string; number:number; potion:Potion; url:string; qr:string};
 type PrintBundle = {url:string; qr:string; itemCount:number};
-type Outcome = {amount:number; dice:number[]; bonus:number; formula:string};
+type Outcome = {kind:'healing'|'resistance'|'duration'; amount:number; dice:number[]; bonus:number; formula:string; damageType?:string; duration?:string; durationHours?:number};
 type ShareCode = {itemId:string; url:string; qr:string};
 
 const INVENTORY_KEY = 'dnd-potion-static-inventory-v1';
@@ -49,14 +50,42 @@ function potionUrl(ids:string[]) {
   return `${location.origin}${location.pathname}#potions=${encodeURIComponent(ids.join(','))}`;
 }
 
+const resistanceDamageTypes=['Звук','Излучение','Кислота','Некротическая энергия','Огонь','Психическая энергия','Силовое поле','Холод','Электричество','Яд'];
+
+function potionEffectText(potion:Potion) {
+  return potion.effect==='healing' ? `Восстанавливает ${potion.range} очков здоровья` : `${potion.benefit} на ${potion.range}`;
+}
+
+function potionRangeText(potion:Potion) {
+  if (potion.effect==='healing') return `${potion.range} здоровья`;
+  if (potion.effect==='resistance') return `Сопротивление на ${potion.range}`;
+  return `Длительность: ${potion.range}`;
+}
+
+function hourLabel(hours:number) {
+  return hours===1?'ЧАС':'ЧАСА';
+}
+
+function rarityMarks(rarity:string) {
+  return '♥'.repeat(rarity==='Обычное'?1:rarity==='Необычное'?2:rarity==='Редкое'?3:4);
+}
+
 function rollPotion(potion:Potion):Outcome {
+  if (potion.effect==='resistance') {
+    const index=crypto.getRandomValues(new Uint8Array(1))[0]%resistanceDamageTypes.length;
+    return {kind:'resistance',amount:0,dice:[],bonus:0,formula:potion.formula,damageType:resistanceDamageTypes[index],duration:potion.range};
+  }
+  if (potion.effect==='duration') {
+    const hours=crypto.getRandomValues(new Uint8Array(1))[0]%4+1;
+    return {kind:'duration',amount:hours,dice:[hours],bonus:0,formula:potion.formula,durationHours:hours};
+  }
   const match=potion.formula.match(/(\d+)\D+(\d+)\s*\+\s*(\d+)/);
   const count=Number(match?.[1] || 1);
   const sides=Number(match?.[2] || 4);
   const bonus=Number(match?.[3] || 0);
   const bytes=crypto.getRandomValues(new Uint8Array(count));
   const dice=Array.from(bytes,value => value%sides+1);
-  return {amount:dice.reduce((sum,value) => sum+value,bonus),dice,bonus,formula:potion.formula};
+  return {kind:'healing',amount:dice.reduce((sum,value) => sum+value,bonus),dice,bonus,formula:potion.formula};
 }
 
 function PrintTag({item}:{item:PrintItem}) {
@@ -71,7 +100,7 @@ function PrintTag({item}:{item:PrintItem}) {
       <p>{item.potion.rarity} · Алхимическая печать №{String(item.number).padStart(2,'0')}</p>
       <h2>{item.potion.fullName}</h2>
       <div className="tag-rule">✦</div>
-      <strong>{item.potion.formula}</strong><span>Восстанавливает {item.potion.range} очков здоровья</span>
+      <strong>{item.potion.formula}</strong><span>{potionEffectText(item.potion)}</span>
       <div className="tag-ornament">— • ◡ • —</div>
     </div>
     <div className="tag-qr"><img src={item.qr} alt={`QR-код: ${item.potion.fullName}`} /><small>СКАНИРОВАТЬ</small></div>
@@ -509,9 +538,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <div className="page-title"><p>СОБРАНИЕ АЛХИМИЧЕСКИХ РЕЦЕПТОВ</p><h1>Каталог зелий</h1><span>Соберите набор для следующей игровой сессии, затем создайте персональные печати.</span></div>
         <div className="catalog-grid">
           {catalog.map((potion,index) => <article className="potion-card" key={potion.id} style={{'--potion-color':potion.color} as React.CSSProperties}>
-            <div className="card-rarity"><span>{potion.rarity}</span><i>{'♥'.repeat(index+1)}</i></div>
+            <div className="card-rarity"><span>{potion.rarity}</span><i>{rarityMarks(potion.rarity)}</i></div>
             <div className="bottle-display"><div className="alchemy-ring">✦</div><Bottle level={index}/></div>
-            <div className="card-copy"><p>ЗЕЛЬЕ ЛЕЧЕНИЯ</p><h2>{potion.name}</h2><div className="formula-row"><strong>{potion.formula}</strong><span>{potion.range} здоровья</span></div>
+            <div className="card-copy"><p>{potion.effectLabel}</p><h2>{potion.name}</h2><div className="formula-row"><strong>{potion.formula}</strong><span>{potion.effect==='healing'?`${potion.range} здоровья`:potion.range}</span></div>
               <div className="quantity-control" aria-label={`Количество: ${potion.fullName}`}>
                 <button onClick={() => changeQuantity(potion.id,-1)} disabled={!cart[potion.id]}>Убрать</button>
                 <output>{cart[potion.id] || 0}</output>
@@ -547,7 +576,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
                 <strong>Поделиться зельем</strong><span>Другой игрок получит копию этого флакона</span>
               </div>}
             </div>
-            <div className="inventory-copy"><h2>{item.potion.fullName}</h2><strong>{item.potion.formula}</strong><span>{item.potion.range} здоровья</span>{opened && index===selectedIndex && <div className="inventory-ritual-progress"><i style={{width:`${tilt*100}%`}}/></div>}</div>
+            <div className="inventory-copy"><h2>{item.potion.fullName}</h2><strong>{item.potion.formula}</strong><span>{potionRangeText(item.potion)}</span>{opened && index===selectedIndex && <div className="inventory-ritual-progress"><i style={{width:`${tilt*100}%`}}/></div>}</div>
           </article>)}
         </div>
       </>}
@@ -579,9 +608,10 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       </div>
     </div>}
 
-    {result && <div className="ritual-overlay"><div className="result-card" style={{'--potion-color':result.potion.color} as React.CSSProperties}>
-        <p>ЗЕЛЬЕ ВЫПИТО</p><h1>Магия свершилась</h1><div className="result-amount">+{result.outcome.amount}<span>♥</span></div><small>ОЧКОВ ЗДОРОВЬЯ</small>
-        <div className="result-dice">{result.outcome.dice.map((die,index)=><i key={index}>{die}</i>)}<b>+ {result.outcome.bonus}</b></div>
+    {result && <div className="ritual-overlay"><div className={`result-card result-kind-${result.outcome.kind}`} style={{'--potion-color':result.potion.color} as React.CSSProperties}>
+        <p>ЗЕЛЬЕ ВЫПИТО</p><h1>{result.outcome.kind==='healing'?'Магия свершилась':result.outcome.kind==='resistance'?'Сопротивление получено':result.potion.id==='growth'?'Вы увеличились':'Вы уменьшились'}</h1>
+        {result.outcome.kind==='healing' ? <><div className="result-amount">+{result.outcome.amount}<span>♥</span></div><small>ОЧКОВ ЗДОРОВЬЯ</small>
+        <div className="result-dice">{result.outcome.dice.map((die,index)=><i key={index}>{die}</i>)}<b>+ {result.outcome.bonus}</b></div></> : result.outcome.kind==='resistance' ? <><div className="result-damage-type">{result.outcome.damageType}</div><small>СОПРОТИВЛЕНИЕ К ЭТОМУ ВИДУ УРОНА</small><div className="result-duration"><span>◒</span><b>{result.outcome.duration}</b></div></> : <><div className="result-hours"><b>{result.outcome.durationHours}</b><span>{hourLabel(result.outcome.durationHours || 1)}</span></div><small>ДЛИТЕЛЬНОСТЬ ЭФФЕКТА</small><div className="result-duration"><span>◒</span><b>Результат броска 1к4</b></div></>}
         <button className="primary-action" onClick={closeRitual}>Вернуться в инвентарь</button>
       </div></div>}
 
