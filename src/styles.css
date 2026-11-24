@@ -55,7 +55,7 @@ button:focus-visible{outline:2px solid #8f2c35;outline-offset:3px}
 .bundle-tag{background:radial-gradient(circle at 42% 15%,#fffdf6,#ecd9c1 72%)}.bundle-tag .tag-seal i{color:#8c0000;border-color:#8c0000}.bundle-tag .tag-copy h2{color:#5d1f25}.bundle-tag .tag-copy strong{font-size:5.5mm}
 
 /* Карточки следуют за пальцем и отпружинивают после короткого жеста. */
-.inventory-card{transform:translateX(calc(var(--card-offset) * 104% + var(--drag-x,0px)))}.player-page.inventory-dragging .inventory-card{transition:none;cursor:grabbing}
+.inventory-stage{contain:layout paint}.inventory-card{transform:translate3d(calc(var(--card-offset) * 104% + var(--drag-x,0px)),0,0);transition:transform .36s cubic-bezier(.2,.82,.28,1),opacity .3s ease;will-change:transform;backface-visibility:hidden}.player-page.inventory-dragging .inventory-card{transition:none;cursor:grabbing}
 
 /* Открытый флакон становится полноэкранным: телефон превращается в само зелье. */
 .site-shell.potion-immersive{background:#25120f}

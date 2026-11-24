@@ -136,8 +136,6 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [inventory,setInventory] = useState<InventoryItem[]>([]);
   const [inventoryReady,setInventoryReady] = useState(false);
   const [selectedIndex,setSelectedIndex] = useState(0);
-  const [dragX,setDragX] = useState(0);
-  const [dragging,setDragging] = useState(false);
   const [toast,setToast] = useState('');
   const [sensorPrompt,setSensorPrompt] = useState(false);
   const [sensorBusy,setSensorBusy] = useState(false);
@@ -154,12 +152,10 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const holdTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const sensorTilt = useRef(0);
   const scannerVideo = useRef<HTMLVideoElement|null>(null);
+  const inventoryStage = useRef<HTMLDivElement|null>(null);
   const scannerHandled = useRef(false);
   const pouringRef = useRef(false);
   const sensorPermissionReady = useRef(false);
-  const dragTargetX = useRef(0);
-  const dragVisualX = useRef(0);
-  const dragFrame = useRef<number|null>(null);
 
   const total = useMemo(() => Object.values(cart).reduce((sum,value) => sum + value,0),[cart]);
   const activeItem = inventory.length ? inventory[Math.min(selectedIndex,inventory.length-1)] : null;
@@ -351,8 +347,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
 
   const consume = useCallback(async () => {
     if (!ritualItem || pouringRef.current) return;
-    pouringRef.current = true; setPouring(true); setTilt(1);
-    window.setTimeout(() => setLiquidDrain(1),50);
+    pouringRef.current = true; setPouring(true); setTilt(1); setLiquidDrain(1);
     const consumed=ritualItem;
     const outcome=rollPotion(consumed.potion);
     window.setTimeout(() => setResult({potion:consumed.potion,outcome}),1500);
@@ -404,7 +399,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       }
       // DeviceOrientation обычно стабильнее. Акселерометр используем только
       // как запасной вариант, если события ориентации перестали приходить.
-      if (performance.now()-lastOrientationAt < 200) return;
+      if (performance.now()-lastOrientationAt < 50) return;
       const gravityDelta=Math.abs(gravity.x-baselineGravityX);
       progress(Math.max(0,Math.min(1,(gravityDelta-1)/(9.7-1))));
     }
@@ -456,34 +451,21 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     navigator.vibrate?.(18);
   }
 
-  function stopDragAnimation() {
-    if (dragFrame.current != null) cancelAnimationFrame(dragFrame.current);
-    dragFrame.current=null;
-    dragTargetX.current=0;
-    dragVisualX.current=0;
-    setDragX(0);
+  function setCardDrag(value:number) {
+    inventoryStage.current?.style.setProperty('--drag-x',`${value}px`);
   }
 
-  function smoothDragTo(target:number) {
-    dragTargetX.current=target;
-    if (dragFrame.current != null) return;
-    const step=() => {
-      const distance=dragTargetX.current-dragVisualX.current;
-      const next=Math.abs(distance)<.3 ? dragTargetX.current : dragVisualX.current+distance*.34;
-      dragVisualX.current=next;
-      setDragX(next);
-      if (Math.abs(dragTargetX.current-dragVisualX.current)>.3) dragFrame.current=requestAnimationFrame(step);
-      else dragFrame.current=null;
-    };
-    dragFrame.current=requestAnimationFrame(step);
+  function cancelCardDrag(page?:HTMLElement) {
+    page?.classList.remove('inventory-dragging');
+    setCardDrag(0);
   }
 
   function playerPointerDown(event:React.PointerEvent<HTMLElement>) {
     if (pouring || result || shareCode) return;
     const bounds=event.currentTarget.getBoundingClientRect();
     screenGesture.current={x:event.clientX,y:event.clientY,upperHalf:event.clientY<bounds.top+bounds.height/2};
-    stopDragAnimation();
-    setDragging(false);
+    event.currentTarget.classList.remove('inventory-dragging');
+    setCardDrag(0);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }
 
@@ -495,25 +477,39 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     if (Math.abs(dx) < 4 || Math.abs(dx) <= Math.abs(dy)) return;
     const beyondStart=selectedIndex===0 && dx>0;
     const beyondEnd=selectedIndex===inventory.length-1 && dx<0;
-    setDragging(true);
-    smoothDragTo((beyondStart||beyondEnd)?dx*.24:dx);
+    event.currentTarget.classList.add('inventory-dragging');
+    setCardDrag((beyondStart||beyondEnd)?dx*.24:dx);
   }
 
   function playerPointerEnd(event:React.PointerEvent<HTMLElement>) {
+    const page=event.currentTarget;
     const start=screenGesture.current;
     screenGesture.current=null;
-    setDragging(false);
-    stopDragAnimation();
-    if (!start || !activeItem || pouring || result || shareCode) return;
+    if (!start || !activeItem || pouring || result || shareCode) {
+      cancelCardDrag(page);
+      return;
+    }
     const dx=event.clientX-start.x;
     const dy=event.clientY-start.y;
     const horizontal=Math.abs(dx)>Math.abs(dy);
-    const threshold=Math.min(105,Math.max(58,event.currentTarget.clientWidth*.14));
-    if (!opened && horizontal && Math.abs(dx)>threshold && inventory.length>1) {
+    const threshold=Math.min(105,Math.max(58,page.clientWidth*.14));
+    const canMove=dx<0 ? selectedIndex<inventory.length-1 : selectedIndex>0;
+    if (!opened && horizontal && Math.abs(dx)>threshold && inventory.length>1 && canMove) {
+      const card=inventoryStage.current?.querySelector<HTMLElement>('.inventory-card.active');
+      const step=(card?.getBoundingClientRect().width || page.clientWidth*.8)*1.04;
+      // После смены индекса сохраняем карточки в точке отпускания пальца,
+      // а затем одним CSS-переходом доводим соседнюю карточку до центра.
+      setCardDrag(dx+(dx<0?step:-step));
       setSelectedIndex(current => dx<0 ? Math.min(current+1,inventory.length-1) : Math.max(current-1,0));
+      requestAnimationFrame(() => {
+        page.classList.remove('inventory-dragging');
+        void inventoryStage.current?.offsetWidth;
+        setCardDrag(0);
+      });
       navigator.vibrate?.(12);
       return;
     }
+    cancelCardDrag(page);
     if (opened && start.upperHalf && !horizontal && dy > 42) {
       closeOpenedBottle();
       return;
@@ -557,13 +553,13 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <button className="primary-action" disabled={!total || busy} onClick={createPrintBatch}>{busy?'Создаём печати…':'Создать и печатать'}</button>
         <small className="prototype-note">QR-коды многоразовые. Инвентарь каждого игрока хранится только на его устройстве.</small>
       </aside>
-    </main> : <main className={`player-page ${opened?'opened':''} ${pouring?'pouring':''} ${dragging?'inventory-dragging':''}`} onPointerDown={playerPointerDown} onPointerMove={playerPointerMove} onPointerUp={playerPointerEnd} onPointerCancel={() => {screenGesture.current=null;setDragging(false);stopDragAnimation();}}>
+    </main> : <main className={`player-page ${opened?'opened':''} ${pouring?'pouring':''}`} onPointerDown={playerPointerDown} onPointerMove={playerPointerMove} onPointerUp={playerPointerEnd} onPointerCancel={event => {screenGesture.current=null;cancelCardDrag(event.currentTarget);}}>
       <div className="page-title player-title"><p>ЛИЧНАЯ СУМКА ПРИКЛЮЧЕНЦА</p><h1>Мои зелья</h1></div>
       <button className="inventory-scan-button" type="button" aria-label="Отсканировать новый QR-код" title="Отсканировать новый QR-код" onPointerDown={event => event.stopPropagation()} onClick={event => {event.stopPropagation();setScannerOpen(true);}}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 10.3 3h3.4L15 4.5h3.2A2.8 2.8 0 0 1 21 7.3v10.4a2.8 2.8 0 0 1-2.8 2.8H5.8A2.8 2.8 0 0 1 3 17.7V7.3a2.8 2.8 0 0 1 2.8-2.8H9Zm3 3.2a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4Zm0 2a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4Z"/></svg>
       </button>
       {!inventoryReady ? <div className="inventory-empty"><span>✦</span><h2>Проверяем печати…</h2></div> : !inventory.length ? <div className="inventory-empty"><span>☾</span><h2>Инвентарь пуст</h2><p>Отсканируйте бирку зелья обычной камерой телефона.</p></div> : <>
-        <div className="inventory-stage" style={{'--drag-x':`${dragX}px`} as React.CSSProperties}>
+        <div className="inventory-stage" ref={inventoryStage} style={{'--drag-x':'0px'} as React.CSSProperties}>
           {inventory.map((item,index) => <article className={`inventory-card ${index===selectedIndex?'active':''}`} key={item.id} aria-hidden={index!==selectedIndex} style={{'--potion-color':item.potion.color,'--card-offset':index-selectedIndex,opacity:index===selectedIndex?1:.28} as React.CSSProperties}>
             <p>{item.potion.rarity} · ФЛАКОН {index+1} ИЗ {inventory.length}</p>
             <button className={`inventory-qr-toggle ${shareCode?.itemId===item.id?'active':''}`} disabled={opened || index!==selectedIndex} onClick={() => toggleShare(item)} aria-label={shareCode?.itemId===item.id?'Скрыть QR-код передачи':'Показать QR-код передачи'} title={shareCode?.itemId===item.id?'Скрыть QR-код':'Показать QR-код'}>
