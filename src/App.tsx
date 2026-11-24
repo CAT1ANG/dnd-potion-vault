@@ -357,51 +357,38 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     if (!opened || !ritualItem || result) return;
     let lastOrientationAt=0;
     let lastUpdateAt=performance.now();
-    let baselineGamma:number|null=null;
-    let baselineGravityX:number|null=null;
-    let orientationSamples=0;
-    let motionSamples=0;
-
     function progress(target:number) {
       const now=performance.now();
       const elapsed=Math.min(80,Math.max(8,now-lastUpdateAt));
       lastUpdateAt=now;
-      const smoothing=1-Math.pow(.94,elapsed/16.67);
+      // Сглаживаем только индикатор. Решение о начале питья принимается
+      // по сырому углу, иначе фильтр добавляет почти секунду задержки.
+      const smoothing=1-Math.pow(.82,elapsed/16.67);
       let next=sensorTilt.current+(target-sensorTilt.current)*smoothing;
       if (next < .025) next=0;
       sensorTilt.current=next;
       setTilt(current => Math.max(current,next));
 
-      if (next > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,200);
-      if (next <= .80 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
+      if (target > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,200);
+      if (target <= .80 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
     }
     function orientation(event:DeviceOrientationEvent) {
       if (event.gamma == null) return;
       lastOrientationAt=performance.now();
-      if (orientationSamples < 12 || baselineGamma == null) {
-        baselineGamma=baselineGamma==null?event.gamma:baselineGamma+(event.gamma-baselineGamma)/(orientationSamples+1);
-        orientationSamples+=1;
-        progress(0);
-        return;
-      }
-      // Калибруемся относительно положения телефона при открытии пробки.
-      // По реальному iPhone: вертикаль ≈ -5°, нужное ребро ≈ -88°.
-      const degrees=Math.abs(event.gamma-baselineGamma);
-      progress(Math.max(0,Math.min(1,(degrees-8)/(82-8))));
+      // Фиксированная шкала: портретная вертикаль ≈ 0°, ребро ≈ ±90°.
+      // Небольшая мёртвая зона не даёт обычному дрожанию запускать питьё.
+      const degrees=Math.abs(event.gamma);
+      progress(Math.max(0,Math.min(1,(degrees-10)/(82-10))));
     }
     function motion(event:DeviceMotionEvent) {
       const gravity = event.accelerationIncludingGravity;
       if (!gravity || gravity.x == null || gravity.y == null || gravity.z == null) return;
-      if (motionSamples < 12 || baselineGravityX == null) {
-        baselineGravityX=baselineGravityX==null?gravity.x:baselineGravityX+(gravity.x-baselineGravityX)/(motionSamples+1);
-        motionSamples+=1;
-        return;
-      }
       // DeviceOrientation обычно стабильнее. Акселерометр используем только
       // как запасной вариант, если события ориентации перестали приходить.
       if (performance.now()-lastOrientationAt < 50) return;
-      const gravityDelta=Math.abs(gravity.x-baselineGravityX);
-      progress(Math.max(0,Math.min(1,(gravityDelta-1)/(9.7-1))));
+      // При вертикальном телефоне X ≈ 0, на ребре X ≈ ±9.8 м/с².
+      const sideGravity=Math.abs(gravity.x);
+      progress(Math.max(0,Math.min(1,(sideGravity-1)/(9-1))));
     }
     window.addEventListener('deviceorientation',orientation,{passive:true});
     window.addEventListener('devicemotion',motion,{passive:true});
