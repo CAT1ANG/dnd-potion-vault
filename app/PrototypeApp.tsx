@@ -107,6 +107,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const scannerVideo = useRef<HTMLVideoElement|null>(null);
   const scannerHandled = useRef(false);
   const pouringRef = useRef(false);
+  const sensorPermissionReady = useRef(false);
 
   const total = useMemo(() => Object.values(cart).reduce((sum,value) => sum + value,0),[cart]);
   const activeItem = inventory.length ? inventory[Math.min(selectedIndex,inventory.length-1)] : null;
@@ -144,7 +145,13 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     setDeviceId(id);
     const sensorChoice=localStorage.getItem('dnd-potion-sensors');
     const sensorCapable='DeviceOrientationEvent' in window || 'DeviceMotionEvent' in window;
-    if (!sensorChoice && sensorCapable && window.matchMedia('(pointer: coarse)').matches) setSensorPrompt(true);
+    const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
+    const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
+    const needsFreshPermission=typeof orientation?.requestPermission==='function' || typeof motion?.requestPermission==='function';
+    // Safari может сбросить фактический доступ между загрузками, тогда как
+    // сохранённое значение localStorage остаётся прежним. На iOS проверяем
+    // разрешение заново при каждом новом открытии страницы.
+    if (sensorCapable && window.matchMedia('(pointer: coarse)').matches && (!sensorChoice || needsFreshPermission)) setSensorPrompt(true);
     const hash = new URLSearchParams(location.hash.slice(1));
     const token = hash.get('p');
     const sharedItem = hash.get('s');
@@ -208,17 +215,26 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     } finally { setBusy(false); }
   }
 
+  async function requestSensorPermissions() {
+    const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
+    const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
+    // Оба вызова создаём синхронно внутри пользовательского нажатия: после
+    // первого await Safari уже может считать жест завершённым.
+    const requests:Array<Promise<'granted'|'denied'>>=[];
+    if (typeof orientation?.requestPermission==='function') requests.push(orientation.requestPermission());
+    if (typeof motion?.requestPermission==='function') requests.push(motion.requestPermission());
+    const results=requests.length ? await Promise.all(requests) : [];
+    return !results.length || results.every(value => value==='granted');
+  }
+
   async function enableSensors() {
     setSensorBusy(true);
     try {
-      const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
-      const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
-      const requests = [orientation?.requestPermission?.(),motion?.requestPermission?.()].filter(Boolean) as Promise<string>[];
-      const results=requests.length ? await Promise.all(requests) : ['granted'];
-      const granted=results.every(value => value==='granted');
+      const granted=await requestSensorPermissions();
+      sensorPermissionReady.current=granted;
       localStorage.setItem('dnd-potion-sensors',granted?'granted':'denied');
       setSensorPrompt(false);
-      notify(granted?'Датчики движения включены.':'Доступ к датчикам отклонён. Остаётся повторный свайп вверх.');
+      notify(granted?'Датчики движения включены.':'Доступ отклонён. Разрешите «Движение и ориентацию» в настройках Safari.');
     } catch {
       localStorage.setItem('dnd-potion-sensors','denied');
       setSensorPrompt(false);
@@ -385,12 +401,21 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     setLiquidDrain(0);
     setRitualItem(item);
     setShareCode(null);
-    const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
-    const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
     try {
-      const requests = [orientation?.requestPermission?.(),motion?.requestPermission?.()].filter(Boolean) as Promise<string>[];
-      if (requests.length) await Promise.all(requests);
-    } catch { /* Резервное управление жестом остаётся доступным. */ }
+      if (!sensorPermissionReady.current && localStorage.getItem('dnd-potion-sensors')!=='skipped') {
+        const granted=await requestSensorPermissions();
+        sensorPermissionReady.current=granted;
+        if (!granted) {
+          setSensorPrompt(true);
+          notify('Сначала разрешите доступ к датчикам движения.');
+          return;
+        }
+      }
+    } catch {
+      setSensorPrompt(true);
+      notify('Safari не дал доступ к датчикам движения.');
+      return;
+    }
     setOpened(true);
     navigator.vibrate?.([25,20,35]);
   }
