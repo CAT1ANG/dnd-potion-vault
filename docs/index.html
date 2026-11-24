@@ -1,101 +1,17 @@
 <!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="theme-color" content="#eadbb8">
-  <meta name="referrer" content="no-referrer">
-  <meta name="description" content="Интерактивные одноразовые зелья для настольных ролевых игр">
-  <title>Алхимическая лавка</title>
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./fixes.css?v=3">
-</head>
-<body>
-  <div class="paper-grain" aria-hidden="true"></div>
-  <div id="app" class="app" data-state="loading">
-    <header class="topbar">
-      <a class="brand" href="./" aria-label="Алхимическая лавка">
-        <span class="brand-mark">✧</span>
-        <span>Алхимическая лавка<small>РУКОПИСЬ О ЖИВОЙ ВОДЕ</small></span>
-      </a>
-      <button id="soundToggle" class="glass-control" type="button" aria-pressed="true" aria-label="Выключить звук">♪</button>
-    </header>
-
-    <main id="main">
-      <section id="loadingView" class="center-view">
-        <div class="loading-seal">✦</div>
-        <p class="overline">ЧИТАЕМ АЛХИМИЧЕСКУЮ ПЕЧАТЬ</p>
-        <h1>Пробуждаем магию…</h1>
-      </section>
-
-      <section id="landingView" class="landing-view" hidden>
-        <p class="overline">ИЗ ЗАПИСОК СТРАНСТВУЮЩЕГО АЛХИМИКА</p>
-        <h1>Искусство<br><em>возвращать жизнь.</em></h1>
-        <p class="lead">Сотрите защитную печать, отсканируйте QR-код и выпейте зелье движением телефона.</p>
-        <div id="landingBottles" class="bottle-catalog" aria-label="Виды зелий лечения"></div>
-        <div class="landing-note glass-panel">Один флакон · один сохранённый бросок · одна история</div>
-      </section>
-
-      <section id="ritualView" class="ritual-view" hidden>
-        <div class="ritual-heading">
-          <p id="potionRarity" class="overline"></p>
-          <h1 id="potionTitle"></h1>
-          <p id="potionFormula" class="formula"></p>
-        </div>
-
-        <div class="ritual-book">
-          <div id="stage" class="potion-stage" aria-live="polite">
-            <div class="botanical botanical-left" aria-hidden="true">❧</div>
-            <div id="bottleMount" class="bottle-mount"></div>
-            <button id="corkHandle" class="cork-handle" type="button" aria-label="Смахните пробку вверх">
-              <span class="cork-text">СВАЙП</span>
-            </button>
-            <div id="tiltMeter" class="tilt-meter" aria-hidden="true"><i></i></div>
-            <p id="stageCaption" class="stage-caption">Смахните пробку вверх</p>
-          </div>
-
-          <div class="ritual-copy">
-            <p class="chapter">РИТУАЛ УПОТРЕБЛЕНИЯ</p>
-            <ol id="steps" class="steps">
-              <li class="active"><span>1</span><div><strong>Снимите пробку</strong><small>Проведите ею вверх одним движением</small></div></li>
-              <li><span>2</span><div><strong>Наклоните телефон</strong><small>Как настоящий флакон — почти горизонтально</small></div></li>
-              <li><span>3</span><div><strong>Допейте до дна</strong><small>Магия сама бросит кубики</small></div></li>
-            </ol>
-            <div id="sensorMessage" class="sensor-message glass-panel">На компьютере бутылку можно потянуть вверх пальцем или мышью.</div>
-          </div>
-        </div>
-      </section>
-
-      <section id="resultView" class="result-view" hidden aria-live="polite">
-        <p id="resultEyebrow" class="overline"></p>
-        <h1 id="resultHeading">Жизнь возвращается.</h1>
-        <div class="result-book">
-          <div id="emptyBottleMount" class="result-bottle"></div>
-          <div class="result-copy">
-            <p id="resultPotion" class="chapter"></p>
-            <div class="heal"><span>+</span><b id="healAmount">0</b><i>♥</i></div>
-            <p class="health-label">ОЧКОВ ЗДОРОВЬЯ</p>
-            <p class="result-story">Тёплая волна разливается по телу.<br>Раны затягиваются. Ваша история продолжается.</p>
-            <div id="dice" class="dice"></div>
-            <p id="resultNote" class="result-note"></p>
-            <button id="againButton" class="primary-button" type="button" hidden>Испытать ещё раз</button>
-          </div>
-        </div>
-      </section>
-
-      <section id="errorView" class="center-view" hidden>
-        <div class="error-seal">!</div>
-        <p class="overline">ПЕЧАТЬ НЕ ОТКРЫЛАСЬ</p>
-        <h1 id="errorHeading">Зелье не найдено</h1>
-        <p id="errorText" class="lead"></p>
-        <button id="retryButton" class="primary-button" type="button">Повторить проверку</button>
-      </section>
-    </main>
-
-    <footer><span>❦ &nbsp; Бережно храните магию.</span><span>Алхимическая лавка · Зелья лечения</span></footer>
-  </div>
-  <script src="./app.js?v=3" defer></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#d4be91" />
+    <meta name="description" content="Каталог и интерактивный инвентарь зелий для настольных ролевых игр" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Алхимический архив</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script type="module" crossorigin src="./assets/index-gm5k2vdI.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-F0y0OPvf.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
