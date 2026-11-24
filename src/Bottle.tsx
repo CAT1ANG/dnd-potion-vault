@@ -12,7 +12,7 @@ const shapes=[
 export default function Bottle({level=0,empty=false,fill=1,draining=false,tilt=0}:{level?:number,empty?:boolean,fill?:number,draining?:boolean,tilt?:number}){
  const id=useId().replace(/:/g,'');const jar=level===2;const color=colors[level]??colors[0];const shape=shapes[level]??shapes[0];const depthColor=level===4?'#00343d':level===5?'#291442':level===6?'#17391d':'#300000';
  const liquidOffset=(1-Math.max(0,Math.min(1,fill)))*112;
- const liquidTilt=Math.max(-1,Math.min(1,tilt))*82;
+ const liquidTilt=-Math.max(-1,Math.min(1,tilt))*82;
  return <div className={`bottle bottle-${level} ${empty?'empty':''}`} aria-hidden="true"><svg className="bottle-art" viewBox="0 0 116 190" fill="none"><defs>
  <clipPath id={`${id}-shape`}><path d={shape}/></clipPath>
  <linearGradient id={`${id}-glass`} x1="0" y1="0" x2="116" y2="50" gradientUnits="userSpaceOnUse"><stop stopColor="#fffdf1" stopOpacity=".8"/><stop offset=".3" stopColor="#e4f2e5" stopOpacity=".12"/><stop offset=".72" stopColor="#b3c7b4" stopOpacity=".25"/><stop offset="1" stopColor="#fffdf6" stopOpacity=".9"/></linearGradient>
