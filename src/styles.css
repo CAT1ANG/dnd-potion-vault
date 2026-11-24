@@ -1,4 +1,3 @@
-@import './prototype-additions.css';
 :root{--ink:#332820;--muted:#766451;--paper:#eee2c6;--red:#8f2c35;--line:rgba(74,52,34,.2);--glass:rgba(255,255,245,.44)}
 *{box-sizing:border-box}
 html{min-height:100%;background:#d4be91}
