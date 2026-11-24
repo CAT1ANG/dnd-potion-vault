@@ -9,9 +9,10 @@ const shapes=[
  'M42 34 H74 V55 L105 105 L91 178 H25 L11 105 L42 55 Z',
  'M42 34 H74 V55 C91 65 105 88 105 119 C105 158 86 180 58 180 C30 180 11 158 11 119 C11 88 25 65 42 55 Z'
 ];
-export default function Bottle({level=0,empty=false,fill=1,draining=false}:{level?:number,empty?:boolean,fill?:number,draining?:boolean}){
+export default function Bottle({level=0,empty=false,fill=1,draining=false,tilt=0}:{level?:number,empty?:boolean,fill?:number,draining?:boolean,tilt?:number}){
  const id=useId().replace(/:/g,'');const jar=level===2;const color=colors[level]??colors[0];const shape=shapes[level]??shapes[0];const depthColor=level===4?'#00343d':level===5?'#291442':level===6?'#17391d':'#300000';
  const liquidOffset=(1-Math.max(0,Math.min(1,fill)))*112;
+ const liquidTilt=-Math.max(-1,Math.min(1,tilt))*82;
  return <div className={`bottle bottle-${level} ${empty?'empty':''}`} aria-hidden="true"><svg className="bottle-art" viewBox="0 0 116 190" fill="none"><defs>
  <clipPath id={`${id}-shape`}><path d={shape}/></clipPath>
  <linearGradient id={`${id}-glass`} x1="0" y1="0" x2="116" y2="50" gradientUnits="userSpaceOnUse"><stop stopColor="#fffdf1" stopOpacity=".8"/><stop offset=".3" stopColor="#e4f2e5" stopOpacity=".12"/><stop offset=".72" stopColor="#b3c7b4" stopOpacity=".25"/><stop offset="1" stopColor="#fffdf6" stopOpacity=".9"/></linearGradient>
@@ -24,7 +25,8 @@ export default function Bottle({level=0,empty=false,fill=1,draining=false}:{leve
  {level===3&&<rect x="43" y="30" width="30" height="29" rx="3" fill={`url(#${id}-glass)`} stroke="#fff9e9"/>}
  <path d={shape} fill={`url(#${id}-glass)`} stroke="#8e8b6d" strokeOpacity=".45" strokeWidth="2"/>
  <g clipPath={`url(#${id}-shape)`}>
- <g opacity={empty?.06:1} style={{transform:`translateY(${liquidOffset}px)`,transition:`transform ${draining?'1.5s linear':'.25s ease-out'}`}}><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-fluid)`}/><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-depth)`}/><path d="M0 81 Q25 76 58 81 T116 81" stroke="#ffc4b4" strokeWidth="2" opacity=".65"/>
+ <g className={`bottle-liquid ${Math.abs(tilt)>.025?'tipping':''} ${draining?'draining':''}`} opacity={empty?.06:1} style={{transform:`translateY(${liquidOffset}px) rotate(${liquidTilt}deg)`,transformOrigin:'58px 81px',transition:`transform ${draining?'1.5s cubic-bezier(.2,.68,.24,1)':'90ms linear'}`,willChange:'transform'}}><path d="M-90 81 Q-45 75 0 81 T90 81 T180 81 V270 H-90Z" fill={`url(#${id}-fluid)`}/><path d="M-90 81 Q-45 75 0 81 T90 81 T180 81 V270 H-90Z" fill={`url(#${id}-depth)`}/><path className="liquid-surface" d="M-90 81 Q-45 75 0 81 T90 81 T180 81" stroke="#ffd8c8" strokeWidth="2" opacity=".72"/>
+ <path className="liquid-surface-glint" d="M-55 79 Q-28 76 0 80" stroke="white" strokeWidth="1.2" strokeLinecap="round" opacity=".5"/>
  <circle cx="67" cy="94" r="2.4" stroke="#ffe5d1" opacity=".5"/><circle cx="47" cy="153" r="1.4" stroke="#ffe5d1" opacity=".5"/><circle cx="80" cy="161" r="2" stroke="#ffe5d1" opacity=".4"/></g>
  <path d={shape} fill="none" stroke="#fffdf0" strokeWidth="7" opacity=".4"/>
  <path d={level===0?'M46 46V161':level===1?'M44 58L15 163':level===2?'M24 56V160':level===4?'M43 61C28 83 22 112 26 150':level===5?'M42 63L18 109L29 158':level===6?'M40 65C23 84 18 113 25 148':'M51 52L17 96L29 158'} stroke="white" strokeWidth="5" strokeLinecap="round" opacity=".48"/>

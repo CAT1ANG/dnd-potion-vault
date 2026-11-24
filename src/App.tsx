@@ -146,11 +146,13 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [opened,setOpened] = useState(false);
   const [pouring,setPouring] = useState(false);
   const [tilt,setTilt] = useState(0);
+  const [liquidTilt,setLiquidTilt] = useState(0);
   const [liquidDrain,setLiquidDrain] = useState(0);
   const [result,setResult] = useState<{potion:Potion;outcome:Outcome}|null>(null);
   const screenGesture = useRef<{x:number;y:number;upperHalf:boolean}|null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const sensorTilt = useRef(0);
+  const liquidDirection = useRef(1);
   const scannerVideo = useRef<HTMLVideoElement|null>(null);
   const inventoryStage = useRef<HTMLDivElement|null>(null);
   const scannerHandled = useRef(false);
@@ -340,14 +342,14 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       saveInventory(next);
       return next;
     });
-    setRitualItem(null); setOpened(false); setPouring(false); setTilt(0); setLiquidDrain(0); setResult(null);
+    setRitualItem(null); setOpened(false); setPouring(false); setTilt(0); setLiquidTilt(0); setLiquidDrain(0); setResult(null);
     sensorTilt.current = 0;
     pouringRef.current = false;
   },[ritualItem]);
 
   const consume = useCallback(async () => {
     if (!ritualItem || pouringRef.current) return;
-    pouringRef.current = true; setPouring(true); setTilt(1); setLiquidDrain(1);
+    pouringRef.current = true; setPouring(true); setTilt(1); setLiquidTilt(liquidDirection.current); setLiquidDrain(1);
     const consumed=ritualItem;
     const outcome=rollPotion(consumed.potion);
     window.setTimeout(() => setResult({potion:consumed.potion,outcome}),1500);
@@ -357,7 +359,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     if (!opened || !ritualItem || result) return;
     let lastOrientationAt=0;
     let lastUpdateAt=performance.now();
-    function progress(target:number) {
+    function progress(target:number,direction:number) {
       const now=performance.now();
       const elapsed=Math.min(80,Math.max(8,now-lastUpdateAt));
       lastUpdateAt=now;
@@ -367,7 +369,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       let next=sensorTilt.current+(target-sensorTilt.current)*smoothing;
       if (next < .025) next=0;
       sensorTilt.current=next;
-      setTilt(current => Math.max(current,next));
+      setTilt(next);
+      if (target>.025) liquidDirection.current=direction;
+      setLiquidTilt(next*liquidDirection.current);
 
       if (target > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,200);
       if (target <= .80 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
@@ -378,7 +382,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       // Фиксированная шкала: портретная вертикаль ≈ 0°, ребро ≈ ±90°.
       // Небольшая мёртвая зона не даёт обычному дрожанию запускать питьё.
       const degrees=Math.abs(event.gamma);
-      progress(Math.max(0,Math.min(1,(degrees-10)/(82-10))));
+      progress(Math.max(0,Math.min(1,(degrees-10)/(82-10))),event.gamma<0?-1:1);
     }
     function motion(event:DeviceMotionEvent) {
       const gravity = event.accelerationIncludingGravity;
@@ -388,7 +392,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       if (performance.now()-lastOrientationAt < 50) return;
       // При вертикальном телефоне X ≈ 0, на ребре X ≈ ±9.8 м/с².
       const sideGravity=Math.abs(gravity.x);
-      progress(Math.max(0,Math.min(1,(sideGravity-1)/(9-1))));
+      progress(Math.max(0,Math.min(1,(sideGravity-1)/(9-1))),gravity.x<0?-1:1);
     }
     window.addEventListener('deviceorientation',orientation,{passive:true});
     window.addEventListener('devicemotion',motion,{passive:true});
@@ -403,7 +407,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   async function openBottle(item:InventoryItem) {
     if (opened) return;
     sensorTilt.current=0;
+    liquidDirection.current=1;
     setTilt(0);
+    setLiquidTilt(0);
     setLiquidDrain(0);
     setRitualItem(item);
     setShareCode(null);
@@ -432,6 +438,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     holdTimer.current=null;
     sensorTilt.current=0;
     setTilt(0);
+    setLiquidTilt(0);
     setLiquidDrain(0);
     setOpened(false);
     setRitualItem(null);
@@ -553,7 +560,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3V3Zm2 2v3h3V5H5Zm9-2h7v7h-7V3Zm2 2v3h3V5h-3ZM3 14h7v7H3v-7Zm2 2v3h3v-3H5Zm9-2h3v3h-3v-3Zm4 0h3v3h-3v-3Zm-4 4h3v3h-3v-3Zm4 0h1v1h2v2h-4v-3Z"/></svg>
             </button>
             <div className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`}>
-              <div className="inventory-bottle-shell"><Bottle level={levelFor(catalog,item.potion)} fill={index===selectedIndex&&opened?1-liquidDrain:1} draining={pouring&&index===selectedIndex}/></div>
+              <div className="inventory-bottle-shell"><Bottle level={levelFor(catalog,item.potion)} fill={index===selectedIndex&&opened?1-liquidDrain:1} draining={pouring&&index===selectedIndex} tilt={index===selectedIndex&&opened?liquidTilt:0}/></div>
               {shareCode?.itemId===item.id && <div className="inventory-qr">
                 <img src={shareCode.qr} alt={`QR-код передачи: ${item.potion.fullName}`}/>
                 <strong>Поделиться зельем</strong><span>Другой игрок получит копию этого флакона</span>
