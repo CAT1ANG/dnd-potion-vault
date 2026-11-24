@@ -282,7 +282,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     try {
       const [data] = await Promise.all([
         api<{potion:Potion;outcome:Outcome}>({action:'consume',itemId:ritualItem.id,deviceId}),
-        new Promise(resolve => window.setTimeout(resolve,3200)),
+        new Promise(resolve => window.setTimeout(resolve,2200)),
       ]);
       setResult(data);
       await refreshInventory(deviceId,true);
@@ -311,7 +311,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       sensorTilt.current=next;
       setTilt(current => Math.max(current,next));
 
-      if (next > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,900);
+      if (next > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,300);
       if (next <= .80 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
     }
     function orientation(event:DeviceOrientationEvent) {

@@ -21,7 +21,7 @@ export default function Bottle({level=0,empty=false,fill=1,draining=false}:{leve
  {level===3&&<rect x="43" y="30" width="30" height="29" rx="3" fill={`url(#${id}-glass)`} stroke="#fff9e9"/>}
  <path d={shape} fill={`url(#${id}-glass)`} stroke="#8e8b6d" strokeOpacity=".45" strokeWidth="2"/>
  <g clipPath={`url(#${id}-shape)`}>
- <g opacity={empty?.06:1} style={{transform:`translateY(${liquidOffset}px)`,transition:`transform ${draining?'3s linear':'.25s ease-out'}`}}><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-fluid)`}/><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-depth)`}/><path d="M0 81 Q25 76 58 81 T116 81" stroke="#ffc4b4" strokeWidth="2" opacity=".65"/>
+ <g opacity={empty?.06:1} style={{transform:`translateY(${liquidOffset}px)`,transition:`transform ${draining?'2s linear':'.25s ease-out'}`}}><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-fluid)`}/><path d="M0 81 Q25 76 58 81 T116 81 V183 H0Z" fill={`url(#${id}-depth)`}/><path d="M0 81 Q25 76 58 81 T116 81" stroke="#ffc4b4" strokeWidth="2" opacity=".65"/>
  <circle cx="67" cy="94" r="2.4" stroke="#ffe5d1" opacity=".5"/><circle cx="47" cy="153" r="1.4" stroke="#ffe5d1" opacity=".5"/><circle cx="80" cy="161" r="2" stroke="#ffe5d1" opacity=".4"/></g>
  <path d={shape} fill="none" stroke="#fffdf0" strokeWidth="7" opacity=".4"/>
  <path d={level===0?'M46 46V161':level===1?'M44 58L15 163':level===2?'M24 56V160':'M51 52L17 96L29 158'} stroke="white" strokeWidth="5" strokeLinecap="round" opacity=".48"/>
