@@ -127,6 +127,7 @@ function BundleTag({bundle}:{bundle:PrintBundle}) {
 }
 
 export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
+  const isIOS=useMemo(() => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1),[]);
   const [mode,setMode] = useState<'master'|'player'>('master');
   const [cart,setCart] = useState<Record<string,number>>({});
   const [busy,setBusy] = useState(false);
@@ -158,6 +159,24 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const scannerHandled = useRef(false);
   const pouringRef = useRef(false);
   const sensorPermissionReady = useRef(false);
+  const iosSensorFrame = useRef<number|null>(null);
+  const iosSensorVisual = useRef({progress:0,signedTilt:0});
+
+  const applyIosSensorVisual=useCallback((progress:number,signedTilt:number,immediate=false) => {
+    iosSensorVisual.current={progress,signedTilt};
+    const paint=() => {
+      iosSensorFrame.current=null;
+      const stage=inventoryStage.current;
+      if (!stage) return;
+      const visual=iosSensorVisual.current;
+      stage.style.setProperty('--ios-sensor-progress',`${visual.progress*100}%`);
+      stage.style.setProperty('--ios-liquid-angle',`${-visual.signedTilt*82}deg`);
+    };
+    if (immediate) {
+      if (iosSensorFrame.current!=null) cancelAnimationFrame(iosSensorFrame.current);
+      paint();
+    } else if (iosSensorFrame.current==null) iosSensorFrame.current=requestAnimationFrame(paint);
+  },[]);
 
   const total = useMemo(() => Object.values(cart).reduce((sum,value) => sum + value,0),[cart]);
   const activeItem = inventory.length ? inventory[Math.min(selectedIndex,inventory.length-1)] : null;
@@ -343,17 +362,19 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       return next;
     });
     setRitualItem(null); setOpened(false); setPouring(false); setTilt(0); setLiquidTilt(0); setLiquidDrain(0); setResult(null);
+    if (isIOS) applyIosSensorVisual(0,0,true);
     sensorTilt.current = 0;
     pouringRef.current = false;
-  },[ritualItem]);
+  },[ritualItem,isIOS,applyIosSensorVisual]);
 
   const consume = useCallback(async () => {
     if (!ritualItem || pouringRef.current) return;
     pouringRef.current = true; setPouring(true); setTilt(1); setLiquidTilt(liquidDirection.current); setLiquidDrain(1);
+    if (isIOS) applyIosSensorVisual(1,liquidDirection.current,true);
     const consumed=ritualItem;
     const outcome=rollPotion(consumed.potion);
     window.setTimeout(() => setResult({potion:consumed.potion,outcome}),1500);
-  },[ritualItem]);
+  },[ritualItem,isIOS,applyIosSensorVisual]);
 
   useEffect(() => {
     // После начала питья фиксируем выбранное ребро и полностью отключаем
@@ -372,11 +393,12 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       let next=sensorTilt.current+(target-sensorTilt.current)*smoothing;
       if (next < .025) next=0;
       sensorTilt.current=next;
-      setTilt(next);
       // На Android gamma меняет знак при переходе через край диапазона ±90°.
       // Выбираем ребро до крайнего наклона и затем сохраняем направление.
       if (target>.025 && target<.80) liquidDirection.current=direction;
-      setLiquidTilt(next*liquidDirection.current);
+      const signedTilt=next*liquidDirection.current;
+      if (isIOS) applyIosSensorVisual(next,signedTilt);
+      else { setTilt(next); setLiquidTilt(signedTilt); }
 
       if (target > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,200);
       if (target <= .80 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
@@ -407,7 +429,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       if (holdTimer.current) clearTimeout(holdTimer.current);
       holdTimer.current=null;
     };
-  },[opened,ritualItem,pouring,result,consume]);
+  },[opened,ritualItem,pouring,result,consume,isIOS,applyIosSensorVisual]);
 
   async function openBottle(item:InventoryItem) {
     if (opened) return;
@@ -415,6 +437,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     liquidDirection.current=1;
     setTilt(0);
     setLiquidTilt(0);
+    if (isIOS) applyIosSensorVisual(0,0,true);
     setLiquidDrain(0);
     setRitualItem(item);
     setShareCode(null);
@@ -444,6 +467,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     sensorTilt.current=0;
     setTilt(0);
     setLiquidTilt(0);
+    if (isIOS) applyIosSensorVisual(0,0,true);
     setLiquidDrain(0);
     setOpened(false);
     setRitualItem(null);
@@ -519,7 +543,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     }
   }
 
-  return <div className={`site-shell ${mode==='player'&&opened?'potion-immersive':''}`}>
+  return <div className={`site-shell ${isIOS?'ios-device':''} ${mode==='player'&&opened?'potion-immersive':''}`}>
     <header className="site-header">
       <button className="brand-button" onClick={() => setMode('master')}><span>✧</span><strong>Алхимический архив<small>ПРОТОТИП КАТАЛОГА ЗЕЛИЙ</small></strong></button>
       <nav aria-label="Режим просмотра">
@@ -565,13 +589,13 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3V3Zm2 2v3h3V5H5Zm9-2h7v7h-7V3Zm2 2v3h3V5h-3ZM3 14h7v7H3v-7Zm2 2v3h3v-3H5Zm9-2h3v3h-3v-3Zm4 0h3v3h-3v-3Zm-4 4h3v3h-3v-3Zm4 0h1v1h2v2h-4v-3Z"/></svg>
             </button>
             <div className={`inventory-visual ${shareCode?.itemId===item.id?'showing-qr':''}`}>
-              <div className="inventory-bottle-shell"><Bottle level={levelFor(catalog,item.potion)} fill={index===selectedIndex&&opened?1-liquidDrain:1} draining={pouring&&index===selectedIndex} tilt={index===selectedIndex&&opened?liquidTilt:0}/></div>
+              <div className="inventory-bottle-shell"><Bottle level={levelFor(catalog,item.potion)} fill={index===selectedIndex&&opened?1-liquidDrain:1} draining={pouring&&index===selectedIndex} tilt={index===selectedIndex&&opened?liquidTilt:0} cssTilt={isIOS&&index===selectedIndex&&opened}/></div>
               {shareCode?.itemId===item.id && <div className="inventory-qr">
                 <img src={shareCode.qr} alt={`QR-код передачи: ${item.potion.fullName}`}/>
                 <strong>Поделиться зельем</strong><span>Другой игрок получит копию этого флакона</span>
               </div>}
             </div>
-            <div className="inventory-copy"><h2>{item.potion.fullName}</h2><strong>{item.potion.formula}</strong><span>{potionRangeText(item.potion)}</span>{opened && index===selectedIndex && <div className="inventory-ritual-progress"><i style={{width:`${tilt*100}%`}}/></div>}</div>
+            <div className="inventory-copy"><h2>{item.potion.fullName}</h2><strong>{item.potion.formula}</strong><span>{potionRangeText(item.potion)}</span>{opened && index===selectedIndex && <div className="inventory-ritual-progress"><i style={{width:isIOS?'var(--ios-sensor-progress, 0%)':`${tilt*100}%`}}/></div>}</div>
           </article>)}
         </div>
       </>}
