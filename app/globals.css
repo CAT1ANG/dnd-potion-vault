@@ -56,3 +56,22 @@ button:focus-visible{outline:2px solid #8f2c35;outline-offset:3px}
 
 /* Карточки следуют за пальцем и отпружинивают после короткого жеста. */
 .inventory-card{transform:translateX(calc(var(--card-offset) * 104% + var(--drag-x,0px)))}.player-page.inventory-dragging .inventory-card{transition:none;cursor:grabbing}
+
+/* Открытый флакон становится полноэкранным: телефон превращается в само зелье. */
+.site-shell.potion-immersive{background:#25120f}
+.site-shell.potion-immersive .site-header{display:none}
+.site-shell.potion-immersive .player-page{position:fixed;inset:0;z-index:80;width:100vw;height:100dvh;padding:0;background:#25120f}
+.site-shell.potion-immersive .player-title,
+.site-shell.potion-immersive .inventory-scan-button{display:none}
+.site-shell.potion-immersive .inventory-stage{position:absolute;inset:0;width:100%;height:100%}
+.site-shell.potion-immersive .inventory-card{display:none}
+.site-shell.potion-immersive .inventory-card.active{display:grid;inset:0;width:100vw;height:100dvh;min-height:0;max-height:none;padding:0;border:0;background:transparent;box-shadow:none;transform:none;grid-template-rows:1fr;overflow:hidden}
+.site-shell.potion-immersive .inventory-card.active:before,
+.site-shell.potion-immersive .inventory-card.active>p,
+.site-shell.potion-immersive .inventory-card.active>.inventory-qr-toggle,
+.site-shell.potion-immersive .inventory-card.active>.inventory-copy{display:none}
+.site-shell.potion-immersive .inventory-card.active>.inventory-visual{grid-row:1;position:absolute;inset:0;width:100%;height:100%;display:grid;place-items:center}
+.site-shell.potion-immersive .inventory-bottle-shell{width:100vw;height:100dvh;transform:none;animation:immersive-bottle-in .42s cubic-bezier(.2,.8,.2,1)}
+.site-shell.potion-immersive .inventory-bottle-shell .bottle{width:100%;height:100%;filter:drop-shadow(12px 25px 13px rgba(0,0,0,.35))}
+.site-shell.potion-immersive .inventory-bottle-shell .bottle-art{width:100%;height:100%;max-width:100vw;max-height:100dvh}
+@keyframes immersive-bottle-in{from{transform:scale(.72);opacity:.35}to{transform:scale(1);opacity:1}}

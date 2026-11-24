@@ -395,6 +395,18 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     navigator.vibrate?.([25,20,35]);
   }
 
+  function closeOpenedBottle() {
+    if (!opened || pouring || result) return;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current=null;
+    sensorTilt.current=0;
+    setTilt(0);
+    setLiquidDrain(0);
+    setOpened(false);
+    setRitualItem(null);
+    navigator.vibrate?.(18);
+  }
+
   function playerPointerDown(event:React.PointerEvent<HTMLElement>) {
     if (pouring || result || shareCode) return;
     const bounds=event.currentTarget.getBoundingClientRect();
@@ -431,13 +443,17 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       navigator.vibrate?.(12);
       return;
     }
+    if (opened && start.upperHalf && !horizontal && dy > 42) {
+      closeOpenedBottle();
+      return;
+    }
     if (start.upperHalf && !horizontal && dy < -42) {
       if (!opened) void openBottle(activeItem);
       else void consume();
     }
   }
 
-  return <div className="site-shell">
+  return <div className={`site-shell ${mode==='player'&&opened?'potion-immersive':''}`}>
     <header className="site-header">
       <button className="brand-button" onClick={() => setMode('master')}><span>✧</span><strong>Алхимический архив<small>ПРОТОТИП КАТАЛОГА ЗЕЛИЙ</small></strong></button>
       <nav aria-label="Режим просмотра">
