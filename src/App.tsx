@@ -356,10 +356,13 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   },[ritualItem]);
 
   useEffect(() => {
-    if (!opened || !ritualItem || result) return;
+    // После начала питья фиксируем выбранное ребро и полностью отключаем
+    // влияние датчиков: дальнейшее вытекание всегда проигрывается одинаково.
+    if (!opened || !ritualItem || pouring || result) return;
     let lastOrientationAt=0;
     let lastUpdateAt=performance.now();
     function progress(target:number,direction:number) {
+      if (pouringRef.current) return;
       const now=performance.now();
       const elapsed=Math.min(80,Math.max(8,now-lastUpdateAt));
       lastUpdateAt=now;
@@ -402,7 +405,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       if (holdTimer.current) clearTimeout(holdTimer.current);
       holdTimer.current=null;
     };
-  },[opened,ritualItem,result,consume]);
+  },[opened,ritualItem,pouring,result,consume]);
 
   async function openBottle(item:InventoryItem) {
     if (opened) return;
