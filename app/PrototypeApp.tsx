@@ -9,6 +9,7 @@ type Potion = {
 };
 type InventoryItem = {id:string; claimedAt:string; potion:Potion};
 type PrintItem = {id:string; number:number; potion:Potion; url:string; qr:string};
+type PrintBundle = {url:string; qr:string; itemCount:number};
 type Outcome = {amount:number; dice:number[]; bonus:number; formula:string};
 type ShareCode = {itemId:string; url:string; qr:string};
 
@@ -55,11 +56,31 @@ function PrintTag({item}:{item:PrintItem}) {
   </article>;
 }
 
+function BundleTag({bundle}:{bundle:PrintBundle}) {
+  return <article className="print-tag bundle-tag" style={{'--potion-color':'#8c0000'} as React.CSSProperties}>
+    <svg className="tag-frame" viewBox="0 0 1000 310" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M115 8H970L992 32V278L970 302H115L8 242V68Z" />
+      <path d="M124 21H960L979 41V269L960 289H124L23 234V76Z" />
+    </svg>
+    <div className="tag-seal" aria-hidden="true"><span>✦</span><i>✧</i><span>✦</span></div>
+    <div className="tag-copy">
+      <div className="tag-ornament">— • ☾ • —</div>
+      <p>ЕДИНАЯ ПЕЧАТЬ · ОДНОРАЗОВАЯ АКТИВАЦИЯ</p>
+      <h2>Весь набор зелий</h2>
+      <div className="tag-rule">✦</div>
+      <strong>{bundle.itemCount} флаконов</strong><span>Одно сканирование добавит весь набор в инвентарь</span>
+      <div className="tag-ornament">— • ◡ • —</div>
+    </div>
+    <div className="tag-qr"><img src={bundle.qr} alt={`QR-код набора из ${bundle.itemCount} зелий`} /><small>ЗАБРАТЬ ВЕСЬ НАБОР</small></div>
+  </article>;
+}
+
 export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [mode,setMode] = useState<'master'|'player'>('master');
   const [cart,setCart] = useState<Record<string,number>>({});
   const [busy,setBusy] = useState(false);
   const [printItems,setPrintItems] = useState<PrintItem[]>([]);
+  const [printBundle,setPrintBundle] = useState<PrintBundle|null>(null);
   const [printOpen,setPrintOpen] = useState(false);
   const [deviceId,setDeviceId] = useState('');
   const [inventory,setInventory] = useState<InventoryItem[]>([]);
@@ -125,13 +146,14 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     const hash = new URLSearchParams(location.hash.slice(1));
     const token = hash.get('p');
     const sharedItem = hash.get('s');
-    const playerRequested = token || sharedItem || new URLSearchParams(location.search).has('player');
+    const bundleToken = hash.get('b');
+    const playerRequested = token || sharedItem || bundleToken || new URLSearchParams(location.search).has('player');
     if (playerRequested) setMode('player');
-    if (token || sharedItem) {
-      const claim = token ? {action:'claim',token,deviceId:id} : {action:'claim_share',itemId:sharedItem,deviceId:id};
-      api<{transferred:boolean}>(claim)
+    if (token || sharedItem || bundleToken) {
+      const claim = token ? {action:'claim',token,deviceId:id} : sharedItem ? {action:'claim_share',itemId:sharedItem,deviceId:id} : {action:'claim_batch',token:bundleToken,deviceId:id};
+      api<{transferred?:boolean;count?:number}>(claim)
         .then(data => {
-          notify(data.transferred ? 'Зелье перешло в ваш инвентарь от другого игрока.' : 'Зелье добавлено в инвентарь.');
+          notify(bundleToken ? `Набор из ${data.count || 0} зелий добавлен в инвентарь.` : data.transferred ? 'Зелье перешло в ваш инвентарь от другого игрока.' : 'Зелье добавлено в инвентарь.');
           history.replaceState(null,'',`${location.pathname}?player=1`);
           return refreshInventory(id);
         })
@@ -174,8 +196,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     setBusy(true);
     try {
       const items = Object.entries(cart).map(([potionId,quantity]) => ({potionId,quantity}));
-      const data = await api<{items:PrintItem[]}>({action:'create_batch',items});
+      const data = await api<{items:PrintItem[];bundle:PrintBundle}>({action:'create_batch',items});
       setPrintItems(data.items);
+      setPrintBundle(data.bundle);
       setPrintOpen(true);
       notify(`Создано бирок: ${data.items.length}`);
     } catch (error) {
@@ -227,11 +250,12 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       const hash=new URLSearchParams(scanned.hash.slice(1));
       const token=hash.get('p');
       const sharedItem=hash.get('s');
-      if (!token && !sharedItem) throw new Error('В этом QR-коде нет зелья');
-      const claim=token ? {action:'claim',token,deviceId} : {action:'claim_share',itemId:sharedItem,deviceId};
-      const data=await api<{transferred:boolean}>(claim);
+      const bundleToken=hash.get('b');
+      if (!token && !sharedItem && !bundleToken) throw new Error('В этом QR-коде нет зелья');
+      const claim=token ? {action:'claim',token,deviceId} : sharedItem ? {action:'claim_share',itemId:sharedItem,deviceId} : {action:'claim_batch',token:bundleToken,deviceId};
+      const data=await api<{transferred?:boolean;count?:number}>(claim);
       setScannerOpen(false);
-      notify(data.transferred?'Зелье перешло в ваш инвентарь от другого игрока.':'Зелье добавлено в инвентарь.');
+      notify(bundleToken?`Набор из ${data.count || 0} зелий добавлен в инвентарь.`:data.transferred?'Зелье перешло в ваш инвентарь от другого игрока.':'Зелье добавлено в инвентарь.');
       await refreshInventory(deviceId);
     } catch (error) {
       setScannerOpen(false);
@@ -453,8 +477,8 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     </main>}
 
     {printOpen && <div className="print-overlay">
-      <div className="print-toolbar"><div><strong>Печатный набор</strong><span>{printItems.length} уникальных бирок</span></div><button onClick={() => setPrintOpen(false)}>Закрыть</button><button className="primary-action" onClick={() => window.print()}>Печатать</button></div>
-      <div className="print-sheet">{printItems.map(item => <PrintTag item={item} key={item.id}/>)}</div>
+      <div className="print-toolbar"><div><strong>Печатный набор</strong><span>{printItems.length} отдельных бирок + общий QR</span></div><button onClick={() => setPrintOpen(false)}>Закрыть</button><button className="primary-action" onClick={() => window.print()}>Печатать</button></div>
+      <div className="print-sheet">{printBundle && <BundleTag bundle={printBundle}/>} {printItems.map(item => <PrintTag item={item} key={item.id}/>)}</div>
     </div>}
 
     {sensorPrompt && mode==='player' && <div className="sensor-permission-overlay" role="dialog" aria-modal="true" aria-labelledby="sensor-title">

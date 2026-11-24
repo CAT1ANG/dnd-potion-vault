@@ -15,6 +15,7 @@ function ensureSchema() {
   const db = database();
   schemaReady ??= db.batch([
     db.prepare('CREATE TABLE IF NOT EXISTS inventory_batches (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, item_count INTEGER NOT NULL)'),
+    db.prepare('CREATE TABLE IF NOT EXISTS inventory_bundle_tokens (batch_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, claimed_at TEXT, claimed_by TEXT)'),
     db.prepare('CREATE TABLE IF NOT EXISTS inventory_items (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, potion_type TEXT NOT NULL, batch_id TEXT NOT NULL, owner_device TEXT, claimed_at TEXT, consumed_at TEXT, result_json TEXT, created_at TEXT NOT NULL)'),
     db.prepare('CREATE INDEX IF NOT EXISTS inventory_items_owner_idx ON inventory_items(owner_device, consumed_at)'),
     db.prepare('CREATE INDEX IF NOT EXISTS inventory_items_batch_idx ON inventory_items(batch_id)'),
@@ -74,12 +75,14 @@ export async function POST(request: Request) {
       if (!total || total > 48) return json({error:'Выберите от 1 до 48 зелий'}, 400);
 
       const batchId = crypto.randomUUID();
+      const bundleToken = randomHex(24);
       const createdAt = new Date().toISOString();
       const generated = selections.flatMap(({potion,quantity}) => Array.from({length:quantity}, () => ({
         id: randomHex(12), token: randomHex(24), potion,
       })));
       const statements = [
         db.prepare('INSERT INTO inventory_batches (id, created_at, item_count) VALUES (?, ?, ?)').bind(batchId,createdAt,total),
+        db.prepare('INSERT INTO inventory_bundle_tokens (batch_id, token_hash) VALUES (?, ?)').bind(batchId,await tokenHash(bundleToken)),
         ...await Promise.all(generated.map(async item => db.prepare('INSERT INTO inventory_items (id, token_hash, potion_type, batch_id, created_at) VALUES (?, ?, ?, ?, ?)').bind(item.id,await tokenHash(item.token),item.potion.id,batchId,createdAt))),
       ];
       await db.batch(statements);
@@ -94,7 +97,41 @@ export async function POST(request: Request) {
           qr:await QRCode.toDataURL(url,{errorCorrectionLevel:'M',margin:1,width:420,color:{dark:'#251a14',light:'#fffdf4'}}),
         };
       }));
-      return json({batchId, createdAt, items:printable});
+      const bundleUrl = `${origin}/#b=${bundleToken}`;
+      const bundle = {
+        url:bundleUrl,
+        itemCount:total,
+        qr:await QRCode.toDataURL(bundleUrl,{errorCorrectionLevel:'M',margin:1,width:420,color:{dark:'#251a14',light:'#fffdf4'}}),
+      };
+      return json({batchId, createdAt, bundle, items:printable});
+    }
+
+    if (body.action === 'claim_batch') {
+      if (typeof body.token !== 'string' || !/^[a-f0-9]{48}$/.test(body.token) || !validDevice(body.deviceId)) return json({error:'QR-код набора повреждён'}, 400);
+      const hash = await tokenHash(body.token);
+      const bundle = await db.prepare('SELECT t.batch_id, t.claimed_at, b.item_count FROM inventory_bundle_tokens t JOIN inventory_batches b ON b.id = t.batch_id WHERE t.token_hash = ?').bind(hash).first<{batch_id:string;claimed_at:string|null;item_count:number}>();
+      if (!bundle) return json({error:'Набор зелий не найден'}, 404);
+      if (bundle.claimed_at) return json({error:'Этот набор уже активирован'}, 409);
+
+      const claimedAt = new Date().toISOString();
+      const results = await db.batch([
+        db.prepare(`UPDATE inventory_bundle_tokens SET claimed_at = ?, claimed_by = ?
+          WHERE token_hash = ? AND claimed_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM inventory_items
+            WHERE batch_id = ? AND (owner_device IS NOT NULL OR consumed_at IS NOT NULL)
+          )`).bind(claimedAt,body.deviceId,hash,bundle.batch_id),
+        db.prepare(`UPDATE inventory_items SET owner_device = ?, claimed_at = ?
+          WHERE batch_id = ? AND owner_device IS NULL AND consumed_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM inventory_bundle_tokens
+            WHERE token_hash = ? AND claimed_by = ? AND claimed_at = ?
+          )`).bind(body.deviceId,claimedAt,bundle.batch_id,hash,body.deviceId,claimedAt),
+      ]);
+      const claimedBundle = Number(results[0].meta.changes || 0);
+      const claimedItems = Number(results[1].meta.changes || 0);
+      if (claimedBundle !== 1 || claimedItems !== bundle.item_count) return json({error:'Набор уже активирован или один из его флаконов был отсканирован отдельно'}, 409);
+      return json({count:claimedItems,claimedAt});
     }
 
     if (body.action === 'claim') {

@@ -51,3 +51,5 @@ button:focus-visible{outline:2px solid #8f2c35;outline-offset:3px}
 /* Больше воздуха между флаконом и подписью на карточке. */
 .inventory-bottle-shell{width:82%;height:82%;transform:translateY(-4%)}.inventory-copy{padding-top:14px}.inventory-card .inventory-copy h2{font-size:clamp(22px,5.8vw,27px);line-height:1.08;margin-bottom:7px}
 @media(max-width:700px){.inventory-bottle-shell{width:80%;height:80%;transform:translateY(-5%)}.inventory-card .inventory-copy h2{font-size:clamp(21px,6vw,25px)}}
+
+.bundle-tag{background:radial-gradient(circle at 42% 15%,#fffdf6,#ecd9c1 72%)}.bundle-tag .tag-seal i{color:#8c0000;border-color:#8c0000}.bundle-tag .tag-copy h2{color:#5d1f25}.bundle-tag .tag-copy strong{font-size:5.5mm}
