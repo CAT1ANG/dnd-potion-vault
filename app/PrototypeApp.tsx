@@ -86,6 +86,8 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
   const [inventory,setInventory] = useState<InventoryItem[]>([]);
   const [inventoryReady,setInventoryReady] = useState(false);
   const [selectedIndex,setSelectedIndex] = useState(0);
+  const [dragX,setDragX] = useState(0);
+  const [dragging,setDragging] = useState(false);
   const [toast,setToast] = useState('');
   const [sensorPrompt,setSensorPrompt] = useState(false);
   const [sensorBusy,setSensorBusy] = useState(false);
@@ -397,17 +399,34 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     if (pouring || result || shareCode) return;
     const bounds=event.currentTarget.getBoundingClientRect();
     screenGesture.current={x:event.clientX,y:event.clientY,upperHalf:event.clientY<bounds.top+bounds.height/2};
+    setDragX(0);
+    setDragging(false);
     event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function playerPointerMove(event:React.PointerEvent<HTMLElement>) {
+    const start=screenGesture.current;
+    if (!start || opened || pouring || result || shareCode || inventory.length < 2) return;
+    const dx=event.clientX-start.x;
+    const dy=event.clientY-start.y;
+    if (Math.abs(dx) < 4 || Math.abs(dx) <= Math.abs(dy)) return;
+    const beyondStart=selectedIndex===0 && dx>0;
+    const beyondEnd=selectedIndex===inventory.length-1 && dx<0;
+    setDragging(true);
+    setDragX((beyondStart||beyondEnd)?dx*.24:dx);
   }
 
   function playerPointerEnd(event:React.PointerEvent<HTMLElement>) {
     const start=screenGesture.current;
     screenGesture.current=null;
+    setDragging(false);
+    setDragX(0);
     if (!start || !activeItem || pouring || result || shareCode) return;
     const dx=event.clientX-start.x;
     const dy=event.clientY-start.y;
     const horizontal=Math.abs(dx)>Math.abs(dy);
-    if (!opened && horizontal && Math.abs(dx)>42 && inventory.length>1) {
+    const threshold=Math.min(105,Math.max(58,event.currentTarget.clientWidth*.14));
+    if (!opened && horizontal && Math.abs(dx)>threshold && inventory.length>1) {
       setSelectedIndex(current => dx<0 ? Math.min(current+1,inventory.length-1) : Math.max(current-1,0));
       navigator.vibrate?.(12);
       return;
@@ -451,13 +470,13 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <button className="primary-action" disabled={!total || busy} onClick={createPrintBatch}>{busy?'Создаём печати…':'Создать и печатать'}</button>
         <small className="prototype-note">В прототипе вход мастера не защищён. Перед публикацией добавим аккаунт и историю наборов.</small>
       </aside>
-    </main> : <main className={`player-page ${opened?'opened':''} ${pouring?'pouring':''}`} onPointerDown={playerPointerDown} onPointerUp={playerPointerEnd} onPointerCancel={() => {screenGesture.current=null;}}>
+    </main> : <main className={`player-page ${opened?'opened':''} ${pouring?'pouring':''} ${dragging?'inventory-dragging':''}`} onPointerDown={playerPointerDown} onPointerMove={playerPointerMove} onPointerUp={playerPointerEnd} onPointerCancel={() => {screenGesture.current=null;setDragging(false);setDragX(0);}}>
       <div className="page-title player-title"><p>ЛИЧНАЯ СУМКА ПРИКЛЮЧЕНЦА</p><h1>Мои зелья</h1></div>
       <button className="inventory-scan-button" type="button" aria-label="Отсканировать новый QR-код" title="Отсканировать новый QR-код" onPointerDown={event => event.stopPropagation()} onClick={event => {event.stopPropagation();setScannerOpen(true);}}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 10.3 3h3.4L15 4.5h3.2A2.8 2.8 0 0 1 21 7.3v10.4a2.8 2.8 0 0 1-2.8 2.8H5.8A2.8 2.8 0 0 1 3 17.7V7.3a2.8 2.8 0 0 1 2.8-2.8H9Zm3 3.2a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4Zm0 2a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4Z"/></svg>
       </button>
       {!inventoryReady ? <div className="inventory-empty"><span>✦</span><h2>Проверяем печати…</h2></div> : !inventory.length ? <div className="inventory-empty"><span>☾</span><h2>Инвентарь пуст</h2><p>Отсканируйте бирку зелья обычной камерой телефона.</p></div> : <>
-        <div className="inventory-stage">
+        <div className="inventory-stage" style={{'--drag-x':`${dragX}px`} as React.CSSProperties}>
           {inventory.map((item,index) => <article className={`inventory-card ${index===selectedIndex?'active':''}`} key={item.id} aria-hidden={index!==selectedIndex} style={{'--potion-color':item.potion.color,'--card-offset':index-selectedIndex,opacity:index===selectedIndex?1:.28} as React.CSSProperties}>
             <p>{item.potion.rarity} · ФЛАКОН {index+1} ИЗ {inventory.length}</p>
             <button className={`inventory-qr-toggle ${shareCode?.itemId===item.id?'active':''}`} disabled={opened || index!==selectedIndex} onClick={() => toggleShare(item)} aria-label={shareCode?.itemId===item.id?'Скрыть QR-код передачи':'Показать QR-код передачи'} title={shareCode?.itemId===item.id?'Скрыть QR-код':'Показать QR-код'}>

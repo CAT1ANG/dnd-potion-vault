@@ -53,3 +53,6 @@ button:focus-visible{outline:2px solid #8f2c35;outline-offset:3px}
 @media(max-width:700px){.inventory-bottle-shell{width:80%;height:80%;transform:translateY(-5%)}.inventory-card .inventory-copy h2{font-size:clamp(21px,6vw,25px)}}
 
 .bundle-tag{background:radial-gradient(circle at 42% 15%,#fffdf6,#ecd9c1 72%)}.bundle-tag .tag-seal i{color:#8c0000;border-color:#8c0000}.bundle-tag .tag-copy h2{color:#5d1f25}.bundle-tag .tag-copy strong{font-size:5.5mm}
+
+/* Карточки следуют за пальцем и отпружинивают после короткого жеста. */
+.inventory-card{transform:translateX(calc(var(--card-offset) * 104% + var(--drag-x,0px)))}.player-page.inventory-dragging .inventory-card{transition:none;cursor:grabbing}
