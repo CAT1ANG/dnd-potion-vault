@@ -329,7 +329,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     try {
       const [data] = await Promise.all([
         api<{potion:Potion;outcome:Outcome}>({action:'consume',itemId:ritualItem.id,deviceId}),
-        new Promise(resolve => window.setTimeout(resolve,2000)),
+        new Promise(resolve => window.setTimeout(resolve,1500)),
       ]);
       setResult(data);
     } catch (error) {
@@ -357,7 +357,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       sensorTilt.current=next;
       setTilt(current => Math.max(current,next));
 
-      if (next > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,300);
+      if (next > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,200);
       if (next <= .80 && holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current=null; }
     }
     function orientation(event:DeviceOrientationEvent) {
@@ -384,7 +384,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       }
       // DeviceOrientation обычно стабильнее. Акселерометр используем только
       // как запасной вариант, если события ориентации перестали приходить.
-      if (performance.now()-lastOrientationAt < 500) return;
+      if (performance.now()-lastOrientationAt < 200) return;
       const gravityDelta=Math.abs(gravity.x-baselineGravityX);
       progress(Math.max(0,Math.min(1,(gravityDelta-1)/(9.7-1))));
     }
