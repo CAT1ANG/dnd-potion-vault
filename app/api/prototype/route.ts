@@ -171,10 +171,18 @@ export async function POST(request: Request) {
 
     if (body.action === 'consume') {
       if (typeof body.itemId !== 'string' || !validDevice(body.deviceId)) return json({error:'Не удалось определить флакон'}, 400);
-      const item = await db.prepare('SELECT potion_type FROM inventory_items WHERE id = ? AND owner_device = ? AND consumed_at IS NULL').bind(body.itemId,body.deviceId).first<{potion_type:string}>();
+      const item = await db.prepare('SELECT potion_type, consumed_at, result_json FROM inventory_items WHERE id = ? AND owner_device = ?').bind(body.itemId,body.deviceId).first<{potion_type:string;consumed_at:string|null;result_json:string|null}>();
       if (!item) return json({error:'Флакон больше не принадлежит этому устройству'}, 409);
       const potion = potionById(item.potion_type);
       if (!potion) return json({error:'Неизвестный вид зелья'}, 500);
+      if (item.consumed_at) {
+        if (!item.result_json) return json({error:'Результат выпитого зелья повреждён'}, 500);
+        try {
+          return json({potion:publicPotion(potion),outcome:JSON.parse(item.result_json),consumedAt:item.consumed_at,replayed:true});
+        } catch {
+          return json({error:'Результат выпитого зелья повреждён'}, 500);
+        }
+      }
       const outcome = rollPotion(potion);
       const consumedAt = new Date().toISOString();
       const updated = await db.prepare('UPDATE inventory_items SET consumed_at = ?, result_json = ? WHERE id = ? AND owner_device = ? AND consumed_at IS NULL RETURNING id').bind(consumedAt,JSON.stringify(outcome),body.itemId,body.deviceId).first();
