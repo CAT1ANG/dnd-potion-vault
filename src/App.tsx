@@ -373,7 +373,9 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
       if (next < .025) next=0;
       sensorTilt.current=next;
       setTilt(next);
-      if (target>.025) liquidDirection.current=direction;
+      // На Android gamma меняет знак при переходе через край диапазона ±90°.
+      // Выбираем ребро до крайнего наклона и затем сохраняем направление.
+      if (target>.025 && target<.80) liquidDirection.current=direction;
       setLiquidTilt(next*liquidDirection.current);
 
       if (target > .94 && !holdTimer.current) holdTimer.current=setTimeout(consume,200);
