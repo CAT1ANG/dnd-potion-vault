@@ -618,7 +618,6 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <p>ИНТЕРАКТИВНОЕ ЗЕЛЬЕ</p>
         <h2 id="sensor-title">Разрешить датчики движения?</h2>
         <div className="sensor-orbit" aria-hidden="true"><i>◒</i></div>
-        <p className="sensor-copy">{isIOS?'Это позволит наклонить телефон и выпить открытое зелье. Safari может попросить подтвердить доступ снова после перезапуска страницы.':'Это позволит наклонить телефон и выпить открытое зелье. Выбор сохранится в этом браузере на устройстве.'}</p>
         <button className="primary-action" disabled={sensorBusy} onClick={enableSensors}>{sensorBusy?'Запрашиваем доступ…':'Разрешить датчики'}</button>
         <button className="sensor-skip" disabled={sensorBusy} onClick={continueWithoutSensors}>Продолжить без датчиков</button>
       </div>
