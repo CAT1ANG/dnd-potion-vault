@@ -68,6 +68,10 @@ export function rollPotion(potion: PotionDefinition) {
     const hours = crypto.getRandomValues(new Uint8Array(1))[0] % potion.sides + 1;
     return {kind:'duration',amount:hours,dice:[hours],bonus:0,formula:potion.formula,durationHours:hours};
   }
+  const anomalyRoll = crypto.getRandomValues(new Uint32Array(1))[0];
+  if (anomalyRoll < Math.floor(0.02 * 2 ** 32)) {
+    return {kind:'anomaly',amount:0,dice:[],bonus:0,formula:potion.formula};
+  }
   const bytes = crypto.getRandomValues(new Uint8Array(potion.dice));
   const dice = Array.from(bytes, value => value % potion.sides + 1);
   const amount = dice.reduce((total, value) => total + value, potion.bonus);

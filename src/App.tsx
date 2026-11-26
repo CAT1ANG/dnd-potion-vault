@@ -12,7 +12,7 @@ type Potion = {
 type InventoryItem = {id:string; claimedAt:string; potion:Potion};
 type PrintItem = {id:string; number:number; potion:Potion; url:string; qr:string};
 type PrintBundle = {url:string; qr:string; itemCount:number};
-type Outcome = {kind:'healing'|'resistance'|'duration'; amount:number; dice:number[]; bonus:number; formula:string; damageType?:string; duration?:string; durationHours?:number};
+type Outcome = {kind:'healing'|'resistance'|'duration'|'anomaly'; amount:number; dice:number[]; bonus:number; formula:string; damageType?:string; duration?:string; durationHours?:number};
 type ShareCode = {itemId:string; url:string; qr:string};
 
 const INVENTORY_KEY = 'dnd-potion-static-inventory-v1';
@@ -79,6 +79,8 @@ function rollPotion(potion:Potion):Outcome {
     const hours=crypto.getRandomValues(new Uint8Array(1))[0]%4+1;
     return {kind:'duration',amount:hours,dice:[hours],bonus:0,formula:potion.formula,durationHours:hours};
   }
+  const anomalyRoll=crypto.getRandomValues(new Uint32Array(1))[0];
+  if (anomalyRoll<Math.floor(0.02*2**32)) return {kind:'anomaly',amount:0,dice:[],bonus:0,formula:potion.formula};
   const match=potion.formula.match(/(\d+)\D+(\d+)\s*\+\s*(\d+)/);
   const count=Number(match?.[1] || 1);
   const sides=Number(match?.[2] || 4);
@@ -633,8 +635,8 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     </div>}
 
     {result && <div className="ritual-overlay"><div className={`result-card result-kind-${result.outcome.kind}`} style={{'--potion-color':result.potion.color} as React.CSSProperties}>
-        <p>ЗЕЛЬЕ ВЫПИТО</p><h1>{result.outcome.kind==='healing'?'Магия свершилась':result.outcome.kind==='resistance'?'Сопротивление получено':result.potion.id==='growth'?'Вы увеличились':'Вы уменьшились'}</h1>
-        {result.outcome.kind==='healing' ? <><div className="result-amount">+{result.outcome.amount}<span>♥</span></div><small>ОЧКОВ ЗДОРОВЬЯ</small>
+        <p>ЗЕЛЬЕ ВЫПИТО</p><h1>{result.outcome.kind==='anomaly'?'Проверка Анализа':result.outcome.kind==='healing'?'Магия свершилась':result.outcome.kind==='resistance'?'Сопротивление получено':result.potion.id==='growth'?'Вы увеличились':'Вы уменьшились'}</h1>
+        {result.outcome.kind==='anomaly' ? <div className="result-anomaly"><small>БРОСЬТЕ ПРОВЕРКУ НАВЫКА «АНАЛИЗ»</small><p>Это зелье кажется гуще обычного и на вкус солёное.</p><span>Результат проверки определяет, насколько быстро персонаж замечает странный вкус и решает перестать пить.</span></div> : result.outcome.kind==='healing' ? <><div className="result-amount">+{result.outcome.amount}<span>♥</span></div><small>ОЧКОВ ЗДОРОВЬЯ</small>
         <div className="result-dice">{result.outcome.dice.map((die,index)=><i key={index}>{die}</i>)}<b>+ {result.outcome.bonus}</b></div></> : result.outcome.kind==='resistance' ? <><div className="result-damage-type">{result.outcome.damageType}</div><small>СОПРОТИВЛЕНИЕ К ЭТОМУ ВИДУ УРОНА</small><div className="result-duration"><span>◒</span><b>{result.outcome.duration}</b></div></> : <><div className="result-hours"><b>{result.outcome.durationHours}</b><span>{hourLabel(result.outcome.durationHours || 1)}</span></div><small>ДЛИТЕЛЬНОСТЬ ЭФФЕКТА</small><div className="result-duration"><span>◒</span><b>Результат броска 1к4</b></div></>}
         <button className="primary-action" onClick={closeRitual}>Вернуться в инвентарь</button>
       </div></div>}
