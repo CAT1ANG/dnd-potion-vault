@@ -197,10 +197,16 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
     const orientation = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
     const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & {requestPermission?:()=>Promise<'granted'|'denied'>};
     const needsFreshPermission=typeof orientation?.requestPermission==='function' || typeof motion?.requestPermission==='function';
-    // Safari может сбросить фактический доступ между загрузками, тогда как
-    // сохранённое значение localStorage остаётся прежним. На iOS проверяем
-    // разрешение заново при каждом новом открытии страницы.
-    if (sensorCapable && window.matchMedia('(pointer: coarse)').matches && (!sensorChoice || needsFreshPermission)) setSensorPrompt(true);
+    const savedGranted=sensorChoice==='granted';
+    const skipped=sensorChoice==='skipped';
+    // Android сохраняет выбор для этого браузера и при следующих загрузках
+    // сразу считается готовым. Safari требует новый пользовательский жест,
+    // даже если наше сохранённое значение осталось прежним.
+    if (savedGranted && !isIOS) sensorPermissionReady.current=true;
+    const shouldPrompt=sensorCapable && window.matchMedia('(pointer: coarse)').matches && !skipped && (
+      isIOS ? needsFreshPermission || !sensorChoice : !sensorChoice
+    );
+    if (shouldPrompt) setSensorPrompt(true);
     const hash = new URLSearchParams(location.hash.slice(1));
     const ids=(hash.get('potions') || '').split(',').filter(id => catalog.some(item => item.id===id));
     const playerRequested = ids.length || new URLSearchParams(location.search).has('player');
@@ -612,7 +618,7 @@ export default function PrototypeApp({catalog}:{catalog:Potion[]}) {
         <p>ИНТЕРАКТИВНОЕ ЗЕЛЬЕ</p>
         <h2 id="sensor-title">Разрешить датчики движения?</h2>
         <div className="sensor-orbit" aria-hidden="true"><i>◒</i></div>
-        <p className="sensor-copy">Это позволит наклонить телефон и выпить открытое зелье. Запрос появится только один раз на этом устройстве.</p>
+        <p className="sensor-copy">{isIOS?'Это позволит наклонить телефон и выпить открытое зелье. Safari может попросить подтвердить доступ снова после перезапуска страницы.':'Это позволит наклонить телефон и выпить открытое зелье. Выбор сохранится в этом браузере на устройстве.'}</p>
         <button className="primary-action" disabled={sensorBusy} onClick={enableSensors}>{sensorBusy?'Запрашиваем доступ…':'Разрешить датчики'}</button>
         <button className="sensor-skip" disabled={sensorBusy} onClick={continueWithoutSensors}>Продолжить без датчиков</button>
       </div>
